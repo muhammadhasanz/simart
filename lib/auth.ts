@@ -6,6 +6,9 @@ import { driver, pool, sqliteDb } from '@/lib/db'
 if (driver === 'sqlite' && sqliteDb) {
   const { initSqliteTables } = require('@/lib/db/sqlite-init') as typeof import('@/lib/db/sqlite-init')
   initSqliteTables(sqliteDb)
+  console.log('driver:', driver)
+  console.log('sqliteDb:', sqliteDb)
+  console.log('sqliteDb.prepare:', typeof sqliteDb?.prepare)
 }
 
 // Build the database option that Better Auth expects:
@@ -14,7 +17,7 @@ if (driver === 'sqlite' && sqliteDb) {
 const authDatabase =
   driver === 'postgres'
     ? pool!
-    : { type: 'sqlite' as const, db: sqliteDb! }
+    : sqliteDb!
 
 export const auth = betterAuth({
   database: authDatabase,
@@ -42,12 +45,12 @@ export const auth = betterAuth({
   },
   ...(process.env.NODE_ENV === 'development'
     ? {
-        advanced: {
-          defaultCookieAttributes: {
-            sameSite: 'none' as const,
-            secure: true,
-          },
+      advanced: {
+        defaultCookieAttributes: {
+          sameSite: 'none' as const,
+          secure: true,
         },
-      }
+      },
+    }
     : {}),
 })

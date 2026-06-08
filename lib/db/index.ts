@@ -3,7 +3,17 @@
  *
  * Priority:
  *  1. Supabase / any Postgres connection  →  drizzle-orm/node-postgres
- *  2. Fallback                            →  drizzle-orm/better-sqlite3  (local file)
+ *  2. Fallback (development only)         →  drizzle-orm/better-sqlite3  (local file)
+ *
+ * SQLite is only used when ALL of the following are true:
+ *  - No Postgres URL is configured
+ *  - NODE_ENV is 'development'
+ *  - The better-sqlite3 native bindings can actually be loaded
+ *
+ * In any other case (production, preview, or environments where the native
+ * bindings cannot be compiled), the Postgres driver is used.  If no
+ * Postgres URL is set in those environments a clear error is thrown at
+ * query-time rather than at module-load time.
  *
  * Consumers always import { db } from '@/lib/db' and get a Drizzle instance
  * regardless of the active driver.  The exported `driver` string lets other
@@ -13,9 +23,6 @@
 
 import * as schema from './schema'
 
-// Determine which driver to use at module-load time so the choice is stable
-// for the lifetime of the process.
-//
 // IMPORTANT: Prefer POSTGRES_URL_NON_POOLING (direct connection, port 5432)
 // over the pooled PgBouncer URL (port 6543).  PgBouncer runs in transaction
 // mode on Supabase, which is incompatible with node-postgres's pool — it
@@ -26,7 +33,29 @@ const postgresUrl =
   process.env.POSTGRES_URL ??
   process.env.DATABASE_URL
 
-export const driver: 'postgres' | 'sqlite' = postgresUrl ? 'postgres' : 'sqlite'
+// Only attempt SQLite in development AND when native bindings are available.
+// We check for the compiled .node binding file on disk rather than doing a
+// probe require(), because the Turbopack SSR runtime may fail to load native
+// addons even when Node.js itself can load them directly.
+const isDev = process.env.NODE_ENV === 'development'
+
+function sqliteBindingExists(): boolean {
+  if (!isDev) return false
+  try {
+    const fs = require('fs') as typeof import('fs')
+    const path = require('path') as typeof import('path')
+    const bindingDir = path.join(
+      process.cwd(),
+      'node_modules/.pnpm/better-sqlite3@12.10.0/node_modules/better-sqlite3/build/Release'
+    )
+    return fs.existsSync(path.join(bindingDir, 'better_sqlite3.node'))
+  } catch (error) {
+    return false
+  }
+}
+
+export const driver: 'postgres' | 'sqlite' =
+  postgresUrl ? 'postgres' : sqliteBindingExists() ? 'sqlite' : 'postgres'
 
 // ─── Postgres (Supabase) path ─────────────────────────────────────────────────
 function buildPostgresDb() {
@@ -35,6 +64,22 @@ function buildPostgresDb() {
   // and the direct connection (port 5432).  Better Auth needs a raw pg.Pool —
   // we give it a separate Pool pointed at the non-pooling URL so it always hits
   // Postgres directly and never goes through PgBouncer.
+
+  if (!postgresUrl) {
+    // No database URL is configured yet (e.g. during local dev before a
+    // Supabase integration is added).  Return a proxy that throws a clear
+    // error at query-time rather than crashing at module-load time.
+    const missingDbError = new Error(
+      'No database connection string found. ' +
+      'Set POSTGRES_URL, POSTGRES_URL_NON_POOLING, or DATABASE_URL in your environment.'
+    )
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stub = new Proxy({} as any, {
+      get() { throw missingDbError },
+    })
+    return { db: stub, pool: undefined }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const postgres = require('postgres') as typeof import('postgres')
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -42,22 +87,33 @@ function buildPostgresDb() {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pool } = require('pg') as typeof import('pg')
 
-  // postgres.js client for Drizzle — prepare:false is the key PgBouncer fix
-  const sqlClient = postgres(postgresUrl!, {
+  // postgres.js client for Drizzle — prepare:false is the key PgBouncer fix.
+  // ssl.rejectUnauthorized:false is required for Supabase's self-signed CA chain.
+  const sqlClient = postgres(postgresUrl, {
     prepare: false,
-    ssl: 'require',
+    ssl: { rejectUnauthorized: false },
     max: 10,
   })
 
-  // pg.Pool for Better Auth — always use the direct (non-pooling) URL if available
-  const authConnString =
+  // pg.Pool for Better Auth — always use the direct (non-pooling) URL if available.
+  // We append sslmode=no-verify so that pg's TLS stack accepts Supabase's
+  // self-signed intermediate CA chain without requiring the global
+  // NODE_TLS_REJECT_UNAUTHORIZED env flag.
+  const rawAuthUrl =
     process.env.POSTGRES_URL_NON_POOLING ??
     process.env.POSTGRES_URL ??
     process.env.DATABASE_URL ??
-    postgresUrl!
+    postgresUrl
+
+  // Ensure ?sslmode=no-verify is present on the URL so every pg.Client
+  // spawned from this pool (including those created internally by Better Auth)
+  // inherits the correct TLS setting.
+  const authUrl = new URL(rawAuthUrl)
+  authUrl.searchParams.set('sslmode', 'no-verify')
+  const authConnString = authUrl.toString()
+
   const pgPool = new Pool({
     connectionString: authConnString,
-    ssl: { rejectUnauthorized: false },
     max: 5,
   })
 

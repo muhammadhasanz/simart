@@ -1,0 +1,117 @@
+name: nextjs-app
+
+# =============================================================
+# Jalankan production:  docker compose up app
+# Jalankan development: docker compose up dev
+# =============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  # Service: Production
+  # ----------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: nextjs-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      # Tambahkan env var aplikasi di sini atau gunakan file .env
+    env_file:
+      - .env.production
+    networks:
+      - nextjs-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nextjs.rule=Host(`yourdomain.com`)"
+
+  # ----------------------------------------------------------
+  # Service: Development (Hot Reload)
+  # ----------------------------------------------------------
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: deps          # Hanya install deps, tidak full build
+    container_name: nextjs-dev
+    restart: unless-stopped
+    ports:
+      - "${DEV_PORT:-3000}:3000"
+    volumes:
+      - .:/app               # Mount source code untuk hot reload
+      - /app/node_modules    # Jaga node_modules di dalam container
+      - /app/.next           # Jaga .next cache di dalam container
+    environment:
+      - NODE_ENV=development
+      - NEXT_TELEMETRY_DISABLED=1
+      - WATCHPACK_POLLING=true   # Diperlukan jika hot reload tidak berjalan di WSL/Docker Desktop
+    env_file:
+      - path: .env.local
+        required: false
+    command: >
+      sh -c "npm run dev"
+    networks:
+      - nextjs-network
+
+  # ----------------------------------------------------------
+  # (Opsional) Redis - untuk caching / session
+  # ----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: nextjs-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - nextjs-network
+    profiles:
+      - with-redis         # Aktifkan dengan: docker compose --profile with-redis up
+
+  # ----------------------------------------------------------
+  # (Opsional) PostgreSQL - database
+  # ----------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: nextjs-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-nextjs_db}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - nextjs-network
+    profiles:
+      - with-db            # Aktifkan dengan: docker compose --profile with-db up
+
+# ----------------------------------------------------------
+# Volumes
+# ----------------------------------------------------------
+volumes:
+  redis-data:
+  postgres-data:
+
+# ----------------------------------------------------------
+# Networks
+# ----------------------------------------------------------
+networks:
+  nextjs-network:
+    driver: bridge

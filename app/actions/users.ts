@@ -6,6 +6,7 @@ import { desc, eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
 import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
+import { hashPassword } from 'better-auth/crypto'
 
 export async function getUsers() {
   const rows = await db
@@ -35,9 +36,6 @@ export async function createUser(data: { name: string; email: string; password: 
 
   // Hash the password using the same utility Better Auth uses internally
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { hashPassword } = require('better-auth/dist/crypto') as {
-    hashPassword: (password: string) => Promise<string>
-  }
   const hashedPassword = await hashPassword(data.password)
 
   const newId = crypto.randomUUID()
