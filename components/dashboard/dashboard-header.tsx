@@ -17,6 +17,8 @@ const pathLabels: Record<string, string> = {
   warga: 'Data Warga',
   keluarga: 'Data Keluarga',
   tambah: 'Tambah Baru',
+  pengguna: 'Pengguna',
+  edit: 'Edit',
 }
 
 export function DashboardHeader() {

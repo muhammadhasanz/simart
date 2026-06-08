@@ -2,7 +2,7 @@
 
 import { db } from '@/lib/db'
 import { residents, families, type NewResident } from '@/lib/db/schema'
-import { eq, desc, sql, and, ilike, or, count } from 'drizzle-orm'
+import { eq, desc, sql, and, gte, ilike, or, count } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 // Get all residents with family info
@@ -134,7 +134,9 @@ export async function getResidentStats() {
       )
     )
 
-  // New residents this month
+  // New residents this month.
+  // Pass a Date object — Drizzle's PgTimestamp.mapToDriverValue calls
+  // .toISOString() on it internally; passing a string causes that call to fail.
   const startOfMonth = new Date()
   startOfMonth.setDate(1)
   startOfMonth.setHours(0, 0, 0, 0)
@@ -142,7 +144,7 @@ export async function getResidentStats() {
   const newThisMonth = await db
     .select({ count: count() })
     .from(residents)
-    .where(sql`${residents.createdAt} >= ${startOfMonth}`)
+    .where(gte(residents.createdAt, startOfMonth))
 
   return {
     total: totalResidents[0].count,
@@ -154,24 +156,49 @@ export async function getResidentStats() {
 
 // Get age distribution for charts
 export async function getAgeDistribution() {
-  const result = await db.execute(sql`
-    SELECT 
-      CASE 
-        WHEN EXTRACT(YEAR FROM AGE(CURRENT_DATE, birth_date)) < 5 THEN '0-4'
-        WHEN EXTRACT(YEAR FROM AGE(CURRENT_DATE, birth_date)) BETWEEN 5 AND 14 THEN '5-14'
-        WHEN EXTRACT(YEAR FROM AGE(CURRENT_DATE, birth_date)) BETWEEN 15 AND 24 THEN '15-24'
-        WHEN EXTRACT(YEAR FROM AGE(CURRENT_DATE, birth_date)) BETWEEN 25 AND 44 THEN '25-44'
-        WHEN EXTRACT(YEAR FROM AGE(CURRENT_DATE, birth_date)) BETWEEN 45 AND 64 THEN '45-64'
-        ELSE '65+'
-      END as age_group,
-      COUNT(*) as count
-    FROM residents
-    WHERE resident_status = 'active' AND birth_date IS NOT NULL
-    GROUP BY age_group
-    ORDER BY age_group
-  `)
+  // Fetch only the birth_date column for active residents, then bucket in JS.
+  // This avoids dialect-specific SQL (EXTRACT/AGE for PG, strftime for SQLite)
+  // and is immune to PgBouncer transaction-mode restrictions on complex GROUP BY.
+  const rows = await db
+    .select({ birthDate: residents.birthDate })
+    .from(residents)
+    .where(
+      and(
+        eq(residents.residentStatus, 'active'),
+        sql`${residents.birthDate} IS NOT NULL`
+      )
+    )
 
-  return result.rows as { age_group: string; count: number }[]
+  const buckets: Record<string, number> = {
+    '0-4': 0,
+    '5-14': 0,
+    '15-24': 0,
+    '25-44': 0,
+    '45-64': 0,
+    '65+': 0,
+  }
+
+  const today = new Date()
+
+  for (const { birthDate } of rows) {
+    if (!birthDate) continue
+    const dob = new Date(birthDate as string)
+    let age = today.getFullYear() - dob.getFullYear()
+    const m = today.getMonth() - dob.getMonth()
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--
+
+    if (age < 5) buckets['0-4']++
+    else if (age <= 14) buckets['5-14']++
+    else if (age <= 24) buckets['15-24']++
+    else if (age <= 44) buckets['25-44']++
+    else if (age <= 64) buckets['45-64']++
+    else buckets['65+']++
+  }
+
+  return Object.entries(buckets).map(([age_group, count]) => ({
+    age_group,
+    count,
+  }))
 }
 
 // Get religion composition

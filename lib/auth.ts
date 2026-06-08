@@ -1,8 +1,23 @@
 import { betterAuth } from 'better-auth'
-import { pool } from '@/lib/db'
+import { driver, pool, sqliteDb } from '@/lib/db'
+
+// When SQLite is the active driver, create the tables before Better Auth
+// tries to use them (Better Auth does not run its own DDL for SQLite).
+if (driver === 'sqlite' && sqliteDb) {
+  const { initSqliteTables } = require('@/lib/db/sqlite-init') as typeof import('@/lib/db/sqlite-init')
+  initSqliteTables(sqliteDb)
+}
+
+// Build the database option that Better Auth expects:
+//  • Postgres  → pass the raw pg.Pool (Better Auth auto-detects pg dialect)
+//  • SQLite    → pass { type: 'sqlite', db: <better-sqlite3 instance> }
+const authDatabase =
+  driver === 'postgres'
+    ? pool!
+    : { type: 'sqlite' as const, db: sqliteDb! }
 
 export const auth = betterAuth({
-  database: pool,
+  database: authDatabase,
   baseURL:
     process.env.BETTER_AUTH_URL ??
     (process.env.VERCEL_PROJECT_PRODUCTION_URL
@@ -28,8 +43,6 @@ export const auth = betterAuth({
   ...(process.env.NODE_ENV === 'development'
     ? {
         advanced: {
-          // In dev (v0 preview iframe), force cross-site cookies so the
-          // session cookie is stored by the browser.
           defaultCookieAttributes: {
             sameSite: 'none' as const,
             secure: true,
