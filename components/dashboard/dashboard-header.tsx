@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -44,14 +45,16 @@ export function DashboardHeader() {
                 : 'Detail')
 
             return (
-              <BreadcrumbItem key={segment}>
+              <React.Fragment key={segment}>
                 <BreadcrumbSeparator />
-                {isLast ? (
-                  <BreadcrumbPage>{label}</BreadcrumbPage>
-                ) : (
-                  <BreadcrumbLink href={href}>{label}</BreadcrumbLink>
-                )}
-              </BreadcrumbItem>
+                <BreadcrumbItem>
+                  {isLast ? (
+                    <BreadcrumbPage>{label}</BreadcrumbPage>
+                  ) : (
+                    <BreadcrumbLink href={href}>{label}</BreadcrumbLink>
+                  )}
+                </BreadcrumbItem>
+              </React.Fragment>
             )
           })}
         </BreadcrumbList>

@@ -102,5 +102,52 @@ export function initSqliteTables(sqlite: Database) {
       created_at      TEXT DEFAULT (datetime('now')),
       updated_at      TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS kas_iuran (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      nama        TEXT NOT NULL,
+      keterangan  TEXT,
+      nominal     INTEGER NOT NULL DEFAULT 0,
+      jenis       TEXT NOT NULL DEFAULT 'masuk',
+      tanggal     TEXT NOT NULL,
+      created_at  TEXT DEFAULT (datetime('now')),
+      updated_at  TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS surat_pengantar (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      nomor_surat TEXT NOT NULL,
+      tujuan      TEXT NOT NULL,
+      perihal     TEXT NOT NULL,
+      penerima    TEXT NOT NULL,
+      tanggal     TEXT NOT NULL,
+      status      TEXT NOT NULL DEFAULT 'selesai',
+      created_at  TEXT DEFAULT (datetime('now')),
+      updated_at  TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS pengumuman (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      judul       TEXT NOT NULL,
+      isi         TEXT NOT NULL,
+      tanggal     TEXT NOT NULL,
+      kategori    TEXT NOT NULL DEFAULT 'umum',
+      created_at  TEXT DEFAULT (datetime('now')),
+      updated_at  TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS polls (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      pertanyaan  TEXT NOT NULL,
+      tanggal     TEXT NOT NULL,
+      created_at  TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS poll_options (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      poll_id  INTEGER NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+      teks     TEXT NOT NULL,
+      suara    INTEGER NOT NULL DEFAULT 0
+    );
   `)
 }

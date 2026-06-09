@@ -22,6 +22,10 @@ import {
   Building2,
   UserCog,
   ChevronUp,
+  Wallet,
+  FileText,
+  Megaphone,
+  ExternalLink,
 } from 'lucide-react'
 import { signOut } from '@/lib/auth-client'
 import { useRouter } from 'next/navigation'
@@ -48,6 +52,21 @@ const menuItems = [
     title: 'Data Keluarga',
     url: '/keluarga',
     icon: Home,
+  },
+  {
+    title: 'Kas & Iuran',
+    url: '/kas-iuran',
+    icon: Wallet,
+  },
+  {
+    title: 'E-Surat Pengantar',
+    url: '/surat-pengantar',
+    icon: FileText,
+  },
+  {
+    title: 'Informasi & Polling',
+    url: '/informasi',
+    icon: Megaphone,
   },
 ]
 
@@ -143,6 +162,14 @@ export function AppSidebar({ user }: { user: User }) {
                   </SidebarMenuItem>
                 )
               })}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild className="h-10">
+                  <a href="/portal" target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-5 w-5" />
+                    <span>Portal Warga</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -152,8 +179,7 @@ export function AppSidebar({ user }: { user: User }) {
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton className="h-12 data-[state=open]:bg-sidebar-accent">
+              <DropdownMenuTrigger className="peer/menu-button flex w-full h-12 items-center gap-2 overflow-hidden rounded-md px-2 text-left text-sm outline-none ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sidebar-primary text-sidebar-primary-foreground text-xs font-semibold">
                     {initials}
                   </div>
@@ -166,7 +192,6 @@ export function AppSidebar({ user }: { user: User }) {
                     </span>
                   </div>
                   <ChevronUp className="ml-auto h-4 w-4 text-sidebar-foreground/50" />
-                </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 side="top"
@@ -178,11 +203,9 @@ export function AppSidebar({ user }: { user: User }) {
                   <p className="text-xs text-muted-foreground truncate">{user.email}</p>
                 </div>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/pengguna">
-                    <UserCog className="mr-2 h-4 w-4" />
-                    Kelola Pengguna
-                  </Link>
+                <DropdownMenuItem render={<Link href="/pengguna" />}>
+                  <UserCog className="mr-2 h-4 w-4" />
+                  Kelola Pengguna
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem

@@ -109,8 +109,73 @@ export const residents = pgTable('residents', {
   updatedAt: timestamp('updated_at').defaultNow(),
 })
 
+// --- Kas & Iuran Digital ------------------------------------------------
+
+export const kasIuran = pgTable('kas_iuran', {
+  id: serial('id').primaryKey(),
+  nama: varchar('nama', { length: 255 }).notNull(),
+  keterangan: text('keterangan'),
+  nominal: integer('nominal').notNull().default(0),
+  jenis: varchar('jenis', { length: 6 }).notNull().default('masuk'), // 'masuk' | 'keluar'
+  tanggal: date('tanggal').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+})
+
+// --- E-Surat Pengantar --------------------------------------------------
+
+export const suratPengantar = pgTable('surat_pengantar', {
+  id: serial('id').primaryKey(),
+  nomorSurat: varchar('nomor_surat', { length: 100 }).notNull(),
+  tujuan: varchar('tujuan', { length: 255 }).notNull(),
+  perihal: text('perihal').notNull(),
+  penerima: varchar('penerima', { length: 255 }).notNull(),
+  tanggal: date('tanggal').notNull(),
+  status: varchar('status', { length: 10 }).notNull().default('selesai'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+})
+
+// --- Pusat Informasi & Polling ------------------------------------------
+
+export const pengumuman = pgTable('pengumuman', {
+  id: serial('id').primaryKey(),
+  judul: varchar('judul', { length: 255 }).notNull(),
+  isi: text('isi').notNull(),
+  tanggal: date('tanggal').notNull(),
+  kategori: varchar('kategori', { length: 10 }).notNull().default('umum'), // 'umum' | 'penting' | 'acara'
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+})
+
+export const polls = pgTable('polls', {
+  id: serial('id').primaryKey(),
+  pertanyaan: text('pertanyaan').notNull(),
+  tanggal: date('tanggal').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+})
+
+export const pollOptions = pgTable('poll_options', {
+  id: serial('id').primaryKey(),
+  pollId: integer('poll_id')
+    .notNull()
+    .references(() => polls.id, { onDelete: 'cascade' }),
+  teks: varchar('teks', { length: 255 }).notNull(),
+  suara: integer('suara').notNull().default(0),
+})
+
 // Type exports for use in actions and components
 export type Family = typeof families.$inferSelect
 export type NewFamily = typeof families.$inferInsert
 export type Resident = typeof residents.$inferSelect
 export type NewResident = typeof residents.$inferInsert
+
+export type KasIuran = typeof kasIuran.$inferSelect
+export type NewKasIuran = typeof kasIuran.$inferInsert
+export type SuratPengantar = typeof suratPengantar.$inferSelect
+export type NewSuratPengantar = typeof suratPengantar.$inferInsert
+export type Pengumuman = typeof pengumuman.$inferSelect
+export type NewPengumuman = typeof pengumuman.$inferInsert
+export type Poll = typeof polls.$inferSelect
+export type NewPoll = typeof polls.$inferInsert
+export type PollOption = typeof pollOptions.$inferSelect

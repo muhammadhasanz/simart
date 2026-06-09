@@ -43,25 +43,19 @@ services:
   dev:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: deps          # Hanya install deps, tidak full build
+      dockerfile: Dockerfile.dev
     container_name: nextjs-dev
     restart: unless-stopped
     ports:
-      - "${DEV_PORT:-3000}:3000"
+      - "3111:3000"
     volumes:
       - .:/app               # Mount source code untuk hot reload
       - /app/node_modules    # Jaga node_modules di dalam container
       - /app/.next           # Jaga .next cache di dalam container
     environment:
-      - NODE_ENV=development
-      - NEXT_TELEMETRY_DISABLED=1
-      - WATCHPACK_POLLING=true   # Diperlukan jika hot reload tidak berjalan di WSL/Docker Desktop
-    env_file:
-      - path: .env.local
-        required: false
-    command: >
-      sh -c "npm run dev"
+      NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: 1
+      BETTER_AUTH_URL: http://localhost:3000
     networks:
       - nextjs-network
 
