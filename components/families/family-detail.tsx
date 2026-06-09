@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import {
   Table,
   TableBody,
@@ -60,11 +60,9 @@ export function FamilyDetail({ family }: FamilyDetailProps) {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="outline" size="icon" asChild>
-            <Link href="/keluarga">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
+          <Link href="/keluarga" className={buttonVariants({ variant: 'outline', size: 'icon' })}>
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
           <div>
             <h1 className="text-2xl font-bold">Kartu Keluarga</h1>
             <p className="text-muted-foreground font-mono text-lg">
@@ -72,12 +70,10 @@ export function FamilyDetail({ family }: FamilyDetailProps) {
             </p>
           </div>
         </div>
-        <Button asChild>
-          <Link href={`/keluarga/${family.id}/edit`}>
-            <Pencil className="mr-2 h-4 w-4" />
-            Edit
-          </Link>
-        </Button>
+        <Link href={`/keluarga/${family.id}/edit`} className={buttonVariants()}>
+          <Pencil className="mr-2 h-4 w-4" />
+          Edit
+        </Link>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -118,12 +114,10 @@ export function FamilyDetail({ family }: FamilyDetailProps) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Anggota Keluarga</CardTitle>
-          <Button size="sm" asChild>
-            <Link href={`/warga/tambah?familyId=${family.id}`}>
-              <UserPlus className="mr-2 h-4 w-4" />
-              Tambah Anggota
-            </Link>
-          </Button>
+          <Link href={`/warga/tambah?familyId=${family.id}`} className={buttonVariants({ size: 'sm' })}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            Tambah Anggota
+          </Link>
         </CardHeader>
         <CardContent>
           {sortedMembers.length === 0 ? (

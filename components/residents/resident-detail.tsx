@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { ArrowLeft, Pencil, Home } from 'lucide-react'
 import { format } from 'date-fns'
@@ -85,11 +85,9 @@ export function ResidentDetail({ resident }: ResidentDetailProps) {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="outline" size="icon" asChild>
-            <Link href="/warga">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
+          <Link href="/warga" className={buttonVariants({ variant: 'outline', size: 'icon' })}>
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
           <div>
             <h1 className="text-2xl font-bold">{resident.fullName}</h1>
             <p className="text-muted-foreground font-mono">{resident.nik}</p>
@@ -99,12 +97,10 @@ export function ResidentDetail({ resident }: ResidentDetailProps) {
           <Badge variant={statusVariants[resident.residentStatus || 'active']}>
             {statusLabels[resident.residentStatus || 'active']}
           </Badge>
-          <Button asChild>
-            <Link href={`/warga/${resident.id}/edit`}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit
-            </Link>
-          </Button>
+          <Link href={`/warga/${resident.id}/edit`} className={buttonVariants()}>
+            <Pencil className="mr-2 h-4 w-4" />
+            Edit
+          </Link>
         </div>
       </div>
 

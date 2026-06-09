@@ -115,15 +115,18 @@ export function initSqliteTables(sqlite: Database) {
     );
 
     CREATE TABLE IF NOT EXISTS surat_pengantar (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      nomor_surat TEXT NOT NULL,
-      tujuan      TEXT NOT NULL,
-      perihal     TEXT NOT NULL,
-      penerima    TEXT NOT NULL,
-      tanggal     TEXT NOT NULL,
-      status      TEXT NOT NULL DEFAULT 'selesai',
-      created_at  TEXT DEFAULT (datetime('now')),
-      updated_at  TEXT DEFAULT (datetime('now'))
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      nomor_surat  TEXT NOT NULL,
+      tujuan       TEXT NOT NULL,
+      perihal      TEXT NOT NULL,
+      penerima     TEXT NOT NULL,
+      nik          TEXT,
+      phone        TEXT,
+      nomor_rumah  TEXT,
+      tanggal      TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'menunggu',
+      created_at   TEXT DEFAULT (datetime('now')),
+      updated_at   TEXT DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS pengumuman (
@@ -150,4 +153,22 @@ export function initSqliteTables(sqlite: Database) {
       suara    INTEGER NOT NULL DEFAULT 0
     );
   `)
+
+  // Column migrations — run each ALTER TABLE in its own try/catch because
+  // SQLite throws "duplicate column name" if the column already exists.
+  // This is safe to call every startup and works on both new and old DBs.
+  const migrations = [
+    `ALTER TABLE surat_pengantar ADD COLUMN nik TEXT`,
+    `ALTER TABLE surat_pengantar ADD COLUMN phone TEXT`,
+    `ALTER TABLE surat_pengantar ADD COLUMN nomor_rumah TEXT`,
+    `ALTER TABLE surat_pengantar ADD COLUMN status TEXT NOT NULL DEFAULT 'menunggu'`,
+  ]
+
+  for (const sql of migrations) {
+    try {
+      sqlite.exec(sql)
+    } catch {
+      // Column already exists — safe to ignore
+    }
+  }
 }

@@ -1,16 +1,6 @@
 import { betterAuth } from 'better-auth'
 import { driver, pool, sqliteDb } from '@/lib/db'
 
-// When SQLite is the active driver, create the tables before Better Auth
-// tries to use them (Better Auth does not run its own DDL for SQLite).
-if (driver === 'sqlite' && sqliteDb) {
-  const { initSqliteTables } = require('@/lib/db/sqlite-init') as typeof import('@/lib/db/sqlite-init')
-  initSqliteTables(sqliteDb)
-  console.log('driver:', driver)
-  console.log('sqliteDb:', sqliteDb)
-  console.log('sqliteDb.prepare:', typeof sqliteDb?.prepare)
-}
-
 // Build the database option that Better Auth expects:
 //  • Postgres  → pass the raw pg.Pool (Better Auth auto-detects pg dialect)
 //  • SQLite    → pass { type: 'sqlite', db: <better-sqlite3 instance> }

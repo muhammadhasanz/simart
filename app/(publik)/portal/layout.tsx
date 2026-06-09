@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Portal Warga - Informasi & Polling RT/RW',
+  title: 'Portal Warga - Informasi, Polling & Surat Pengantar RT/RW',
   description:
-    'Portal informasi dan polling untuk warga RT/RW. Lihat pengumuman terbaru dan berikan suara Anda.',
+    'Portal untuk warga RT/RW. Lihat pengumuman, berikan suara pada polling, dan ajukan surat pengantar.',
 }
 
 export default function PortalLayout({
@@ -32,9 +32,9 @@ export default function PortalLayout({
               <polyline points="9 22 9 12 15 12 15 22" />
             </svg>
           </div>
-          <div className="flex flex-col leading-tight">
-            <span className="text-sm font-semibold text-foreground">Portal Warga</span>
-            <span className="text-xs text-muted-foreground">Informasi &amp; Polling RT/RW</span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-semibold leading-none text-foreground">Portal Warga</span>
+            <span className="text-xs leading-none text-muted-foreground">Informasi, Polling &amp; Surat RT/RW</span>
           </div>
         </div>
       </header>

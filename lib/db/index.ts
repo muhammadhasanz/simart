@@ -126,6 +126,8 @@ function buildSqliteDb() {
   const Database = require('better-sqlite3') as typeof import('better-sqlite3')
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { drizzle } = require('drizzle-orm/better-sqlite3') as typeof import('drizzle-orm/better-sqlite3')
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { initSqliteTables } = require('@/lib/db/sqlite-init') as typeof import('@/lib/db/sqlite-init')
 
   const fs = require('fs') as typeof import('fs')
   const path = require('path') as typeof import('path')
@@ -135,6 +137,11 @@ function buildSqliteDb() {
   const sqlite = new Database(path.join(dbDir, 'local.db'))
   sqlite.pragma('journal_mode = WAL')
   sqlite.pragma('foreign_keys = ON')
+
+  // Always run DDL + column migrations before any query so the schema is
+  // up-to-date regardless of which module was imported first.
+  initSqliteTables(sqlite)
+
   return { db: drizzle(sqlite, { schema }), sqlite }
 }
 

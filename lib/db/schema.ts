@@ -18,16 +18,16 @@ export const user = pgTable('user', {
   email: text('email').notNull().unique(),
   emailVerified: boolean('emailVerified').notNull().default(false),
   image: text('image'),
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+  createdAt: timestamp('createdAt').notNull().$defaultFn(() => new Date()),
+  updatedAt: timestamp('updatedAt').notNull().$defaultFn(() => new Date()),
 })
 
 export const session = pgTable('session', {
   id: text('id').primaryKey(),
   expiresAt: timestamp('expiresAt').notNull(),
   token: text('token').notNull().unique(),
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+  createdAt: timestamp('createdAt').notNull().$defaultFn(() => new Date()),
+  updatedAt: timestamp('updatedAt').notNull().$defaultFn(() => new Date()),
   ipAddress: text('ipAddress'),
   userAgent: text('userAgent'),
   userId: text('userId')
@@ -49,8 +49,8 @@ export const account = pgTable('account', {
   refreshTokenExpiresAt: timestamp('refreshTokenExpiresAt'),
   scope: text('scope'),
   password: text('password'),
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+  createdAt: timestamp('createdAt').notNull().$defaultFn(() => new Date()),
+  updatedAt: timestamp('updatedAt').notNull().$defaultFn(() => new Date()),
 })
 
 export const verification = pgTable('verification', {
@@ -58,8 +58,8 @@ export const verification = pgTable('verification', {
   identifier: text('identifier').notNull(),
   value: text('value').notNull(),
   expiresAt: timestamp('expiresAt').notNull(),
-  createdAt: timestamp('createdAt').defaultNow(),
-  updatedAt: timestamp('updatedAt').defaultNow(),
+  createdAt: timestamp('createdAt').$defaultFn(() => new Date()),
+  updatedAt: timestamp('updatedAt').$defaultFn(() => new Date()),
 })
 
 // --- App tables (RT/RW Administration) -------------------------------------
@@ -77,8 +77,8 @@ export const families = pgTable('families', {
   city: varchar('city', { length: 100 }),
   province: varchar('province', { length: 100 }),
   postalCode: varchar('postal_code', { length: 5 }),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
+  createdAt: timestamp('created_at').$defaultFn(() => new Date()),
+  updatedAt: timestamp('updated_at').$defaultFn(() => new Date()),
 })
 
 export const residents = pgTable('residents', {
@@ -102,11 +102,11 @@ export const residents = pgTable('residents', {
   familyStatus: varchar('family_status', { length: 50 }),
   photoUrl: text('photo_url'),
   residentStatus: varchar('resident_status', { length: 20 }).default('active'),
-  entryDate: date('entry_date').defaultNow(),
+  entryDate: date('entry_date').$defaultFn(() => new Date().toISOString().split('T')[0]),
   exitDate: date('exit_date'),
   notes: text('notes'),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
+  createdAt: timestamp('created_at').$defaultFn(() => new Date()),
+  updatedAt: timestamp('updated_at').$defaultFn(() => new Date()),
 })
 
 // --- Kas & Iuran Digital ------------------------------------------------
@@ -118,8 +118,8 @@ export const kasIuran = pgTable('kas_iuran', {
   nominal: integer('nominal').notNull().default(0),
   jenis: varchar('jenis', { length: 6 }).notNull().default('masuk'), // 'masuk' | 'keluar'
   tanggal: date('tanggal').notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
+  createdAt: timestamp('created_at').$defaultFn(() => new Date()),
+  updatedAt: timestamp('updated_at').$defaultFn(() => new Date()),
 })
 
 // --- E-Surat Pengantar --------------------------------------------------
@@ -130,10 +130,13 @@ export const suratPengantar = pgTable('surat_pengantar', {
   tujuan: varchar('tujuan', { length: 255 }).notNull(),
   perihal: text('perihal').notNull(),
   penerima: varchar('penerima', { length: 255 }).notNull(),
+  nik: varchar('nik', { length: 16 }),
+  phone: varchar('phone', { length: 20 }),
+  nomorRumah: varchar('nomor_rumah', { length: 20 }),
   tanggal: date('tanggal').notNull(),
-  status: varchar('status', { length: 10 }).notNull().default('selesai'),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
+  status: varchar('status', { length: 10 }).notNull().default('menunggu'),
+  createdAt: timestamp('created_at').$defaultFn(() => new Date()),
+  updatedAt: timestamp('updated_at').$defaultFn(() => new Date()),
 })
 
 // --- Pusat Informasi & Polling ------------------------------------------
@@ -144,15 +147,15 @@ export const pengumuman = pgTable('pengumuman', {
   isi: text('isi').notNull(),
   tanggal: date('tanggal').notNull(),
   kategori: varchar('kategori', { length: 10 }).notNull().default('umum'), // 'umum' | 'penting' | 'acara'
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
+  createdAt: timestamp('created_at').$defaultFn(() => new Date()),
+  updatedAt: timestamp('updated_at').$defaultFn(() => new Date()),
 })
 
 export const polls = pgTable('polls', {
   id: serial('id').primaryKey(),
   pertanyaan: text('pertanyaan').notNull(),
   tanggal: date('tanggal').notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
+  createdAt: timestamp('created_at').$defaultFn(() => new Date()),
 })
 
 export const pollOptions = pgTable('poll_options', {

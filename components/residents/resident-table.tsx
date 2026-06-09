@@ -11,7 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -138,12 +138,10 @@ export function ResidentTable({ initialData, total }: ResidentTableProps) {
             </SelectContent>
           </Select>
         </div>
-        <Button asChild>
-          <Link href="/warga/tambah">
-            <Plus className="mr-2 h-4 w-4" />
-            Tambah Warga
-          </Link>
-        </Button>
+        <Link href="/warga/tambah" className={buttonVariants()}>
+          <Plus className="mr-2 h-4 w-4" />
+          Tambah Warga
+        </Link>
       </div>
 
       <div className="rounded-md border bg-card">
@@ -189,18 +187,14 @@ export function ResidentTable({ initialData, total }: ResidentTableProps) {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" asChild>
-                        <Link href={`/warga/${resident.id}`}>
-                          <Eye className="h-4 w-4" />
-                          <span className="sr-only">Lihat</span>
-                        </Link>
-                      </Button>
-                      <Button variant="ghost" size="icon" asChild>
-                        <Link href={`/warga/${resident.id}/edit`}>
-                          <Pencil className="h-4 w-4" />
-                          <span className="sr-only">Edit</span>
-                        </Link>
-                      </Button>
+                      <Link href={`/warga/${resident.id}`} className={buttonVariants({ variant: 'ghost', size: 'icon' })}>
+                        <Eye className="h-4 w-4" />
+                        <span className="sr-only">Lihat</span>
+                      </Link>
+                      <Link href={`/warga/${resident.id}/edit`} className={buttonVariants({ variant: 'ghost', size: 'icon' })}>
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Edit</span>
+                      </Link>
                       <Button
                         variant="ghost"
                         size="icon"

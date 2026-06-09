@@ -46,7 +46,11 @@ const emptyForm = {
   tujuan: '',
   perihal: '',
   penerima: '',
+  nik: '',
+  phone: '',
+  nomorRumah: '',
   tanggal: new Date().toISOString().split('T')[0],
+  status: 'menunggu',
 }
 
 const formatDate = (d: string) =>
@@ -88,7 +92,11 @@ export function SuratPengantarClient({ initialData }: Props) {
       tujuan: surat.tujuan,
       perihal: surat.perihal,
       penerima: surat.penerima,
+      nik: surat.nik ?? '',
+      phone: surat.phone ?? '',
+      nomorRumah: surat.nomorRumah ?? '',
       tanggal: surat.tanggal ?? new Date().toISOString().split('T')[0],
+      status: surat.status ?? 'menunggu',
     })
     setErrors({})
     setDialogOpen(true)
@@ -122,24 +130,21 @@ export function SuratPengantarClient({ initialData }: Props) {
     }
     startTransition(async () => {
       try {
+        const payload = {
+          nomorSurat: form.nomorSurat.trim(),
+          tujuan: form.tujuan.trim(),
+          perihal: form.perihal.trim(),
+          penerima: form.penerima.trim(),
+          nik: form.nik.trim() || null,
+          phone: form.phone.trim() || null,
+          nomorRumah: form.nomorRumah.trim() || null,
+          tanggal: form.tanggal,
+          status: (form.status || 'menunggu') as 'menunggu' | 'selesai' | 'ditolak',
+        }
         if (editTarget) {
-          await updateSuratPengantar(editTarget.id, {
-            nomorSurat: form.nomorSurat.trim(),
-            tujuan: form.tujuan.trim(),
-            perihal: form.perihal.trim(),
-            penerima: form.penerima.trim(),
-            tanggal: form.tanggal,
-            status: 'selesai',
-          })
+          await updateSuratPengantar(editTarget.id, payload)
         } else {
-          await createSuratPengantar({
-            nomorSurat: form.nomorSurat.trim(),
-            tujuan: form.tujuan.trim(),
-            perihal: form.perihal.trim(),
-            penerima: form.penerima.trim(),
-            tanggal: form.tanggal,
-            status: 'selesai',
-          })
+          await createSuratPengantar(payload)
         }
         await refreshData()
         setDialogOpen(false)
@@ -255,9 +260,19 @@ export function SuratPengantarClient({ initialData }: Props) {
                       </td>
                       <td className="px-4 py-3">
                         <Badge
-                          variant={surat.status === 'selesai' ? 'default' : 'secondary'}
+                          variant={
+                            surat.status === 'selesai'
+                              ? 'default'
+                              : surat.status === 'ditolak'
+                              ? 'destructive'
+                              : 'secondary'
+                          }
                         >
-                          {surat.status === 'selesai' ? 'Selesai' : 'Draft'}
+                          {surat.status === 'selesai'
+                            ? 'Selesai'
+                            : surat.status === 'ditolak'
+                            ? 'Ditolak'
+                            : 'Menunggu'}
                         </Badge>
                       </td>
                       <td className="px-4 py-3">
@@ -344,6 +359,52 @@ export function SuratPengantarClient({ initialData }: Props) {
               {errors.penerima && (
                 <p className="text-xs text-destructive">{errors.penerima}</p>
               )}
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="sp-nik-admin">NIK</Label>
+                <Input
+                  id="sp-nik-admin"
+                  placeholder="16 digit"
+                  value={form.nik}
+                  onChange={(e) => setForm((f) => ({ ...f, nik: e.target.value }))}
+                  disabled={isPending}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="sp-phone-admin">No. HP</Label>
+                <Input
+                  id="sp-phone-admin"
+                  placeholder="08xx"
+                  value={form.phone}
+                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                  disabled={isPending}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="sp-rumah-admin">No. Rumah</Label>
+                <Input
+                  id="sp-rumah-admin"
+                  placeholder="cth. 12A"
+                  value={form.nomorRumah}
+                  onChange={(e) => setForm((f) => ({ ...f, nomorRumah: e.target.value }))}
+                  disabled={isPending}
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="sp-status-admin">Status</Label>
+              <select
+                id="sp-status-admin"
+                value={form.status}
+                onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+                disabled={isPending}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="menunggu">Menunggu</option>
+                <option value="selesai">Selesai</option>
+                <option value="ditolak">Ditolak</option>
+              </select>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sp-tujuan">Tujuan Surat</Label>
