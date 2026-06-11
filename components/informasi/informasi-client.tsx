@@ -44,7 +44,6 @@ import {
   deletePengumuman,
   getPollsWithOptions,
   createPoll,
-  castVote,
   deletePoll,
   type PollWithOptions,
 } from '@/app/actions/informasi'
@@ -226,7 +225,7 @@ function PengumumanPanel({ initialItems }: { initialItems: Pengumuman[] }) {
                       <Badge variant={kategoriVariant[item.kategori ?? 'umum']}>
                         {kategoriLabel[item.kategori ?? 'umum']}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground" suppressHydrationWarning>
                         {item.tanggal ? formatDate(item.tanggal) : '-'}
                       </span>
                     </div>
@@ -410,8 +409,6 @@ function PengumumanPanel({ initialItems }: { initialItems: Pengumuman[] }) {
 
 function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
   const [polls, setPolls] = useState<PollWithOptions[]>(initialPolls)
-  // Track which polls the user has voted on in this session: pollId -> optionId
-  const [votedMap, setVotedMap] = useState<Record<number, number>>({})
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<PollWithOptions | null>(null)
@@ -422,7 +419,6 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isPending, startTransition] = useTransition()
-  const [votingPollId, setVotingPollId] = useState<number | null>(null)
 
   async function refreshData() {
     const fresh = await getPollsWithOptions()
@@ -486,22 +482,6 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
     })
   }
 
-  function handleVote(pollId: number, optionId: number) {
-    if (votedMap[pollId] !== undefined) return
-    setVotingPollId(pollId)
-    startTransition(async () => {
-      try {
-        await castVote(optionId)
-        setVotedMap((prev) => ({ ...prev, [pollId]: optionId }))
-        await refreshData()
-      } catch {
-        // silently fail — user can retry
-      } finally {
-        setVotingPollId(null)
-      }
-    })
-  }
-
   function handleDeletePoll() {
     if (!deleteTarget) return
     startTransition(async () => {
@@ -538,16 +518,15 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
         <div className="flex flex-col gap-4">
           {polls.map((poll) => {
             const totalSuara = poll.opsi.reduce((s, o) => s + o.suara, 0)
-            const sudahVote = votedMap[poll.id] !== undefined
-            const votedOpsiId = votedMap[poll.id]
-            const isThisPollVoting = votingPollId === poll.id
+            const maxSuara = Math.max(...poll.opsi.map((o) => o.suara))
+            const hasVotes = totalSuara > 0
 
             return (
               <Card key={poll.id}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <CardDescription>
+                      <CardDescription suppressHydrationWarning>
                         {poll.tanggal ? formatDate(poll.tanggal) : '-'}
                       </CardDescription>
                       <CardTitle className="text-base mt-1">
@@ -573,64 +552,34 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
                   {poll.opsi.map((opsi) => {
                     const pct =
                       totalSuara > 0 ? Math.round((opsi.suara / totalSuara) * 100) : 0
-                    const isVoted = votedOpsiId === opsi.id
+                    const isLeading = hasVotes && opsi.suara === maxSuara
 
                     return (
                       <div key={opsi.id} className="flex flex-col gap-1">
-                        {sudahVote ? (
-                          <>
-                            <div className="flex items-center justify-between text-sm">
-                              <div className="flex items-center gap-1.5">
-                                {isVoted && (
-                                  <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />
-                                )}
-                                <span
-                                  className={
-                                    isVoted ? 'font-medium text-foreground' : 'text-foreground'
-                                  }
-                                >
-                                  {opsi.teks}
-                                </span>
-                              </div>
-                              <span className="text-muted-foreground text-xs whitespace-nowrap">
-                                {opsi.suara} suara ({pct}%)
-                              </span>
-                            </div>
-                            <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all duration-500 ${isVoted ? 'bg-primary' : 'bg-muted-foreground/40'}`}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                          </>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full justify-start text-sm"
-                            onClick={() => handleVote(poll.id, opsi.id)}
-                            disabled={isThisPollVoting || isPending}
-                          >
-                            {isThisPollVoting ? (
-                              <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
-                            ) : null}
-                            {opsi.teks}
-                          </Button>
-                        )}
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-1.5">
+                            <span className={isLeading ? "font-bold text-foreground" : "text-foreground"}>
+                              {opsi.teks}
+                            </span>
+                          </div>
+                          <span className={isLeading ? "font-medium text-foreground text-xs whitespace-nowrap" : "text-muted-foreground text-xs whitespace-nowrap"}>
+                            {opsi.suara} suara ({pct}%)
+                          </span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${isLeading ? 'bg-primary' : 'bg-muted-foreground/40'}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
                       </div>
                     )
                   })}
 
                   <div className="pt-1">
-                    {sudahVote ? (
-                      <p className="text-xs text-muted-foreground">
-                        Total {totalSuara} suara &bull; Terima kasih telah memilih
-                      </p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        {totalSuara} suara &bull; Pilih salah satu opsi di atas
-                      </p>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Total {totalSuara} suara
+                    </p>
                   </div>
                 </CardContent>
               </Card>

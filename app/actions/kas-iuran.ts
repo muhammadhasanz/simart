@@ -1,16 +1,25 @@
 'use server'
 
-import { db } from '@/lib/db'
+import { db, driver } from '@/lib/db'
 import { kasIuran, type NewKasIuran } from '@/lib/db/schema'
 import { eq, desc, sum, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
+import { sheetsGet, sheetsPost } from '@/lib/db/sheets-driver'
 
 export async function getKasIuranList() {
+  if (driver === 'gas') {
+    const data = await sheetsGet('getKasIuran')
+    return data
+      .map((d: any) => ({ ...d, nominal: Number(d.nominal) }))
+      .sort((a: any, b: any) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime())
+  }
   return db.select().from(kasIuran).orderBy(desc(kasIuran.tanggal), desc(kasIuran.createdAt))
 }
 
 export async function getKasIuranSummary() {
-  const rows = await db.select().from(kasIuran)
+  const rows = driver === 'gas' 
+    ? (await sheetsGet('getKasIuran')).map((d: any) => ({ ...d, nominal: Number(d.nominal) }))
+    : await db.select().from(kasIuran)
   let totalMasuk = 0
   let totalKeluar = 0
   for (const row of rows) {
@@ -21,25 +30,41 @@ export async function getKasIuranSummary() {
 }
 
 export async function createKasIuran(data: Omit<NewKasIuran, 'id' | 'createdAt' | 'updatedAt'>) {
-  const result = await db.insert(kasIuran).values(data).returning()
+  let result
+  if (driver === 'gas') {
+    result = await sheetsPost('createKasIuran', { data })
+  } else {
+    const res = await db.insert(kasIuran).values(data).returning()
+    result = res[0]
+  }
   revalidatePath('/kas-iuran')
-  return result[0]
+  return result
 }
 
 export async function updateKasIuran(
-  id: number,
+  id: number | string,
   data: Partial<Omit<NewKasIuran, 'id' | 'createdAt' | 'updatedAt'>>
 ) {
-  const result = await db
-    .update(kasIuran)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(kasIuran.id, id))
-    .returning()
+  let result
+  if (driver === 'gas') {
+    result = await sheetsPost('updateKasIuran', { data: { id, ...data } })
+  } else {
+    const res = await db
+      .update(kasIuran)
+      .set({ ...data, updatedAt: new Date().toISOString() })
+      .where(eq(kasIuran.id, Number(id)))
+      .returning()
+    result = res[0]
+  }
   revalidatePath('/kas-iuran')
-  return result[0]
+  return result
 }
 
-export async function deleteKasIuran(id: number) {
-  await db.delete(kasIuran).where(eq(kasIuran.id, id))
+export async function deleteKasIuran(id: number | string) {
+  if (driver === 'gas') {
+    await sheetsPost('deleteKasIuran', { id })
+  } else {
+    await db.delete(kasIuran).where(eq(kasIuran.id, Number(id)))
+  }
   revalidatePath('/kas-iuran')
 }

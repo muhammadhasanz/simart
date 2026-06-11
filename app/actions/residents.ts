@@ -1,9 +1,10 @@
 'use server'
 
-import { db } from '@/lib/db'
+import { db, driver } from '@/lib/db'
 import { residents, families, type NewResident } from '@/lib/db/schema'
 import { eq, desc, sql, and, gte, ilike, or, count } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
+import { sheetsGet, sheetsPost } from '@/lib/db/sheets-driver'
 
 // Get all residents with family info
 export async function getResidents(params?: {
@@ -14,6 +15,39 @@ export async function getResidents(params?: {
   offset?: number
 }) {
   const { search, status, gender, limit = 10, offset = 0 } = params || {}
+
+  if (driver === 'gas') {
+    let allRes = await sheetsGet('getResidents')
+    const allFams = await sheetsGet('getFamilies')
+
+    if (search) {
+      const s = search.toLowerCase()
+      allRes = allRes.filter((r: any) => 
+        (r.fullName && r.fullName.toLowerCase().includes(s)) ||
+        (r.nik && r.nik.toLowerCase().includes(s))
+      )
+    }
+
+    if (status && status !== 'all') {
+      allRes = allRes.filter((r: any) => r.residentStatus === status)
+    }
+
+    if (gender && gender !== 'all') {
+      allRes = allRes.filter((r: any) => r.gender === gender)
+    }
+
+    const total = allRes.length
+    allRes.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    const paginated = allRes.slice(offset, offset + limit)
+
+    return {
+      data: paginated.map((r: any) => {
+        const family = allFams.find((f: any) => f.id == r.familyId) || null
+        return { ...r, family }
+      }),
+      total,
+    }
+  }
 
   const conditions = []
 
@@ -63,7 +97,21 @@ export async function getResidents(params?: {
 }
 
 // Get single resident by ID
-export async function getResidentById(id: number) {
+export async function getResidentById(id: number | string) {
+  if (driver === 'gas') {
+    const allRes = await sheetsGet('getResidents')
+    const res = allRes.find((r: any) => r.id == id)
+    if (!res) return null
+
+    const allFams = await sheetsGet('getFamilies')
+    const family = allFams.find((f: any) => f.id == res.familyId) || null
+
+    return {
+      ...res,
+      family,
+    }
+  }
+
   const result = await db
     .select({
       resident: residents,
@@ -71,7 +119,7 @@ export async function getResidentById(id: number) {
     })
     .from(residents)
     .leftJoin(families, eq(residents.familyId, families.id))
-    .where(eq(residents.id, id))
+    .where(eq(residents.id, Number(id)))
     .limit(1)
 
   if (result.length === 0) return null
@@ -84,34 +132,74 @@ export async function getResidentById(id: number) {
 
 // Create new resident
 export async function createResident(data: NewResident) {
-  const result = await db.insert(residents).values(data).returning()
+  let result
+  if (driver === 'gas') {
+    result = await sheetsPost('createResident', { data })
+  } else {
+    const res = await db.insert(residents).values(data).returning()
+    result = res[0]
+  }
   revalidatePath('/warga')
   revalidatePath('/')
-  return result[0]
+  return result
 }
 
 // Update resident
-export async function updateResident(id: number, data: Partial<NewResident>) {
-  const result = await db
-    .update(residents)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(residents.id, id))
-    .returning()
+export async function updateResident(id: number | string, data: Partial<NewResident>) {
+  let result
+  if (driver === 'gas') {
+    result = await sheetsPost('updateResident', { data: { id, ...data } })
+  } else {
+    const res = await db
+      .update(residents)
+      .set({ ...data, updatedAt: new Date().toISOString() })
+      .where(eq(residents.id, Number(id)))
+      .returning()
+    result = res[0]
+  }
   revalidatePath('/warga')
   revalidatePath(`/warga/${id}`)
   revalidatePath('/')
-  return result[0]
+  return result
 }
 
 // Delete resident
-export async function deleteResident(id: number) {
-  await db.delete(residents).where(eq(residents.id, id))
+export async function deleteResident(id: number | string) {
+  if (driver === 'gas') {
+    await sheetsPost('deleteResident', { id })
+  } else {
+    await db.delete(residents).where(eq(residents.id, Number(id)))
+  }
   revalidatePath('/warga')
   revalidatePath('/')
 }
 
 // Get resident statistics for dashboard
 export async function getResidentStats() {
+  const startOfMonth = new Date()
+  startOfMonth.setDate(1)
+  startOfMonth.setHours(0, 0, 0, 0)
+  const startOfMonthTime = startOfMonth.getTime()
+  const startOfMonthStr = startOfMonth.toISOString()
+
+  if (driver === 'gas') {
+    const allRes = await sheetsGet('getResidents')
+    let total = 0, male = 0, female = 0, newThisMonth = 0
+    
+    for (const r of allRes) {
+      if (r.residentStatus === 'active' || r.residentStatus === 'Aktif' || !r.residentStatus) {
+        total++
+        if (r.gender === 'male' || r.gender === 'Laki-laki') male++
+        if (r.gender === 'female' || r.gender === 'Perempuan') female++
+      }
+      if (r.createdAt && new Date(r.createdAt).getTime() >= startOfMonthTime) {
+        newThisMonth++
+      }
+    }
+    
+    return { total, male, female, newThisMonth }
+  }
+
   const totalResidents = await db
     .select({ count: count() })
     .from(residents)
@@ -134,17 +222,10 @@ export async function getResidentStats() {
       )
     )
 
-  // New residents this month.
-  // Pass a Date object — Drizzle's PgTimestamp.mapToDriverValue calls
-  // .toISOString() on it internally; passing a string causes that call to fail.
-  const startOfMonth = new Date()
-  startOfMonth.setDate(1)
-  startOfMonth.setHours(0, 0, 0, 0)
-
   const newThisMonth = await db
     .select({ count: count() })
     .from(residents)
-    .where(gte(residents.createdAt, startOfMonth))
+    .where(gte(residents.createdAt, startOfMonthStr))
 
   return {
     total: totalResidents[0].count,
@@ -156,18 +237,23 @@ export async function getResidentStats() {
 
 // Get age distribution for charts
 export async function getAgeDistribution() {
-  // Fetch only the birth_date column for active residents, then bucket in JS.
-  // This avoids dialect-specific SQL (EXTRACT/AGE for PG, strftime for SQLite)
-  // and is immune to PgBouncer transaction-mode restrictions on complex GROUP BY.
-  const rows = await db
-    .select({ birthDate: residents.birthDate })
-    .from(residents)
-    .where(
-      and(
-        eq(residents.residentStatus, 'active'),
-        sql`${residents.birthDate} IS NOT NULL`
+  let rows
+  if (driver === 'gas') {
+    const allRes = await sheetsGet('getResidents')
+    rows = allRes
+      .filter((r: any) => (r.residentStatus === 'active' || r.residentStatus === 'Aktif' || !r.residentStatus) && r.birthDate)
+      .map((r: any) => ({ birthDate: r.birthDate }))
+  } else {
+    rows = await db
+      .select({ birthDate: residents.birthDate })
+      .from(residents)
+      .where(
+        and(
+          eq(residents.residentStatus, 'active'),
+          sql`${residents.birthDate} IS NOT NULL`
+        )
       )
-    )
+  }
 
   const buckets: Record<string, number> = {
     '0-4': 0,
@@ -203,6 +289,17 @@ export async function getAgeDistribution() {
 
 // Get religion composition
 export async function getReligionComposition() {
+  if (driver === 'gas') {
+    const allRes = await sheetsGet('getResidents')
+    const active = allRes.filter((r: any) => r.residentStatus === 'active' || r.residentStatus === 'Aktif' || !r.residentStatus)
+    const counts: Record<string, number> = {}
+    active.forEach((r: any) => {
+      const rel = r.religion || 'Unknown'
+      counts[rel] = (counts[rel] || 0) + 1
+    })
+    return Object.entries(counts).map(([religion, count]) => ({ religion, count }))
+  }
+
   const result = await db
     .select({
       religion: residents.religion,
@@ -217,6 +314,20 @@ export async function getReligionComposition() {
 
 // Get occupation breakdown
 export async function getOccupationBreakdown() {
+  if (driver === 'gas') {
+    const allRes = await sheetsGet('getResidents')
+    const active = allRes.filter((r: any) => r.residentStatus === 'active' || r.residentStatus === 'Aktif' || !r.residentStatus)
+    const counts: Record<string, number> = {}
+    active.forEach((r: any) => {
+      const occ = r.occupation || 'Lainnya'
+      counts[occ] = (counts[occ] || 0) + 1
+    })
+    return Object.entries(counts)
+      .map(([occupation, count]) => ({ occupation, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10)
+  }
+
   const result = await db
     .select({
       occupation: residents.occupation,
@@ -233,6 +344,13 @@ export async function getOccupationBreakdown() {
 
 // Get recent residents
 export async function getRecentResidents(limit = 5) {
+  if (driver === 'gas') {
+    const allRes = await sheetsGet('getResidents')
+    return allRes
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, limit)
+  }
+
   const result = await db
     .select()
     .from(residents)

@@ -48,7 +48,7 @@ export function AgeChart({ data }: AgeChartProps) {
               />
               <Bar
                 dataKey="value"
-                fill="hsl(var(--chart-1))"
+                fill="#10b981"
                 radius={[4, 4, 0, 0]}
               />
             </BarChart>

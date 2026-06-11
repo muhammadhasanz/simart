@@ -34,6 +34,7 @@ import {
   updateSuratPengantar,
   deleteSuratPengantar,
   getSuratPengantarList,
+  getCetakToken,
 } from '@/app/actions/surat-pengantar'
 import type { SuratPengantar } from '@/lib/db/schema'
 
@@ -64,14 +65,11 @@ export function SuratPengantarClient({ initialData }: Props) {
   const [suratList, setSuratList] = useState<SuratPengantar[]>(initialData)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [printDialogOpen, setPrintDialogOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<SuratPengantar | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<SuratPengantar | null>(null)
-  const [printTarget, setPrintTarget] = useState<SuratPengantar | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isPending, startTransition] = useTransition()
-  const printRef = useRef<HTMLDivElement>(null)
 
   async function refreshData() {
     const fresh = await getSuratPengantarList()
@@ -88,10 +86,10 @@ export function SuratPengantarClient({ initialData }: Props) {
   function openEdit(surat: SuratPengantar) {
     setEditTarget(surat)
     setForm({
-      nomorSurat: surat.nomorSurat,
-      tujuan: surat.tujuan,
-      perihal: surat.perihal,
-      penerima: surat.penerima,
+      nomorSurat: surat.nomorSurat ?? '',
+      tujuan: surat.tujuan ?? '',
+      perihal: surat.perihal ?? '',
+      penerima: surat.penerima ?? '',
       nik: surat.nik ?? '',
       phone: surat.phone ?? '',
       nomorRumah: surat.nomorRumah ?? '',
@@ -107,17 +105,12 @@ export function SuratPengantarClient({ initialData }: Props) {
     setDeleteDialogOpen(true)
   }
 
-  function openPrint(surat: SuratPengantar) {
-    setPrintTarget(surat)
-    setPrintDialogOpen(true)
-  }
-
   function validate() {
     const e: Record<string, string> = {}
-    if (!form.nomorSurat.trim()) e.nomorSurat = 'Nomor surat wajib diisi.'
-    if (!form.tujuan.trim()) e.tujuan = 'Tujuan surat wajib diisi.'
-    if (!form.perihal.trim()) e.perihal = 'Perihal wajib diisi.'
-    if (!form.penerima.trim()) e.penerima = 'Nama penerima wajib diisi.'
+    if (!String(form.nomorSurat || '').trim()) e.nomorSurat = 'Nomor surat wajib diisi.'
+    if (!String(form.tujuan || '').trim()) e.tujuan = 'Tujuan surat wajib diisi.'
+    if (!String(form.perihal || '').trim()) e.perihal = 'Perihal wajib diisi.'
+    if (!String(form.penerima || '').trim()) e.penerima = 'Nama penerima wajib diisi.'
     if (!form.tanggal) e.tanggal = 'Tanggal wajib diisi.'
     return e
   }
@@ -131,13 +124,13 @@ export function SuratPengantarClient({ initialData }: Props) {
     startTransition(async () => {
       try {
         const payload = {
-          nomorSurat: form.nomorSurat.trim(),
-          tujuan: form.tujuan.trim(),
-          perihal: form.perihal.trim(),
-          penerima: form.penerima.trim(),
-          nik: form.nik.trim() || null,
-          phone: form.phone.trim() || null,
-          nomorRumah: form.nomorRumah.trim() || null,
+          nomorSurat: String(form.nomorSurat || '').trim(),
+          tujuan: String(form.tujuan || '').trim(),
+          perihal: String(form.perihal || '').trim(),
+          penerima: String(form.penerima || '').trim(),
+          nik: String(form.nik || '').trim() || null,
+          phone: String(form.phone || '').trim() || null,
+          nomorRumah: String(form.nomorRumah || '').trim() || null,
           tanggal: form.tanggal,
           status: (form.status || 'menunggu') as 'menunggu' | 'selesai' | 'ditolak',
         }
@@ -168,43 +161,15 @@ export function SuratPengantarClient({ initialData }: Props) {
     })
   }
 
-  function handlePrint() {
-    const printContents = printRef.current?.innerHTML
-    if (!printContents) return
-    const win = window.open('', '_blank')
-    if (!win) return
-    win.document.write(`
-      <!DOCTYPE html>
-      <html lang="id">
-        <head>
-          <meta charset="UTF-8" />
-          <title>Surat Pengantar</title>
-          <style>
-            body { font-family: 'Times New Roman', serif; font-size: 12pt; margin: 0; padding: 2cm; color: #000; }
-            .header { text-align: center; border-bottom: 3px double #000; padding-bottom: 12px; margin-bottom: 20px; }
-            .header h1 { font-size: 16pt; font-weight: bold; margin: 0 0 4px; }
-            .header p { margin: 2px 0; font-size: 11pt; }
-            .title { text-align: center; margin: 24px 0 20px; }
-            .title h2 { font-size: 14pt; font-weight: bold; text-decoration: underline; letter-spacing: 2px; }
-            .title .nomor { font-size: 11pt; margin-top: 4px; }
-            table.meta { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            table.meta td { padding: 4px 8px; vertical-align: top; font-size: 11pt; }
-            table.meta td:first-child { width: 160px; }
-            table.meta td:nth-child(2) { width: 12px; }
-            .body-text { text-align: justify; line-height: 1.8; margin-bottom: 24px; font-size: 11pt; }
-            .sign { margin-top: 40px; display: flex; justify-content: flex-end; }
-            .sign-block { text-align: center; }
-            .sign-block .space { height: 70px; }
-            .sign-block p { margin: 0; font-size: 11pt; }
-            @media print { body { padding: 0; } }
-          </style>
-        </head>
-        <body>${printContents}</body>
-      </html>
-    `)
-    win.document.close()
-    win.focus()
-    setTimeout(() => win.print(), 300)
+  async function handlePrint(surat: SuratPengantar) {
+    startTransition(async () => {
+      try {
+        const token = await getCetakToken(surat.id)
+        window.open(`/portal/cetak/${token}`, '_blank', 'noopener,noreferrer')
+      } catch {
+        setErrors({ _global: 'Gagal membuat token cetak. Coba lagi.' })
+      }
+    })
   }
 
   return (
@@ -280,7 +245,7 @@ export function SuratPengantarClient({ initialData }: Props) {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => openPrint(surat)}
+                            onClick={() => handlePrint(surat)}
                             className="h-8 w-8 p-0"
                             title="Cetak/Download"
                             disabled={isPending}
@@ -499,104 +464,6 @@ export function SuratPengantarClient({ initialData }: Props) {
               ) : (
                 'Hapus'
               )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Print Dialog */}
-      <Dialog open={printDialogOpen} onOpenChange={setPrintDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Pratinjau Surat Pengantar</DialogTitle>
-            <DialogDescription>
-              Periksa tampilan surat sebelum mencetak.
-            </DialogDescription>
-          </DialogHeader>
-          <div
-            ref={printRef}
-            className="border rounded-lg p-8 bg-white text-black text-sm leading-relaxed font-serif max-h-[60vh] overflow-y-auto"
-          >
-            {printTarget && (
-              <>
-                <div className="text-center border-b-2 border-black pb-4 mb-6">
-                  <h1 className="text-lg font-bold uppercase tracking-wide">
-                    Rukun Tetangga 05
-                  </h1>
-                  <p className="text-sm">Desa / Kelurahan Sukamaju, Kecamatan Ciputat</p>
-                  <p className="text-sm">Kota Tangerang Selatan, Banten 15411</p>
-                </div>
-                <div className="text-center mb-6">
-                  <h2 className="text-base font-bold uppercase tracking-widest underline">
-                    Surat Pengantar
-                  </h2>
-                  <p className="text-sm mt-1">Nomor: {printTarget.nomorSurat}</p>
-                </div>
-                <table className="w-full text-sm mb-6">
-                  <tbody>
-                    <tr>
-                      <td className="w-36 align-top py-1">Kepada Yth.</td>
-                      <td className="w-3 align-top py-1">:</td>
-                      <td className="align-top py-1">{printTarget.tujuan}</td>
-                    </tr>
-                    <tr>
-                      <td className="align-top py-1">Perihal</td>
-                      <td className="align-top py-1">:</td>
-                      <td className="align-top py-1">{printTarget.perihal}</td>
-                    </tr>
-                    <tr>
-                      <td className="align-top py-1">Tanggal</td>
-                      <td className="align-top py-1">:</td>
-                      <td className="align-top py-1">
-                        {printTarget.tanggal ? formatDate(printTarget.tanggal) : '-'}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-                <p className="text-sm leading-7 mb-4 text-justify">
-                  Yang bertanda tangan di bawah ini, Ketua Rukun Tetangga 05, dengan ini
-                  menerangkan bahwa:
-                </p>
-                <table className="w-full text-sm mb-4 ml-4">
-                  <tbody>
-                    <tr>
-                      <td className="w-36 py-0.5">Nama</td>
-                      <td className="w-3 py-0.5">:</td>
-                      <td className="py-0.5 font-semibold">{printTarget.penerima}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-0.5">Keterangan</td>
-                      <td className="py-0.5">:</td>
-                      <td className="py-0.5">{printTarget.perihal}</td>
-                    </tr>
-                  </tbody>
-                </table>
-                <p className="text-sm leading-7 mb-8 text-justify">
-                  Adalah benar merupakan warga yang berdomisili di wilayah RT 05. Surat
-                  pengantar ini dibuat untuk keperluan yang bersangkutan. Atas perhatian dan
-                  kerjasamanya, kami ucapkan terima kasih.
-                </p>
-                <div className="flex justify-end">
-                  <div className="text-center text-sm">
-                    <p>
-                      Tangerang Selatan,{' '}
-                      {printTarget.tanggal ? formatDate(printTarget.tanggal) : '-'}
-                    </p>
-                    <p className="mt-1">Ketua RT 05,</p>
-                    <div className="h-16" />
-                    <p className="font-semibold underline">(__________________)</p>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPrintDialogOpen(false)}>
-              Tutup
-            </Button>
-            <Button onClick={handlePrint} className="gap-2">
-              <Printer className="h-4 w-4" />
-              Cetak / Download
             </Button>
           </DialogFooter>
         </DialogContent>

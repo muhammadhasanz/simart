@@ -52,7 +52,7 @@ export function OccupationChart({ data }: OccupationChartProps) {
               />
               <Bar
                 dataKey="value"
-                fill="hsl(var(--chart-3))"
+                fill="#8b5cf6"
                 radius={[0, 4, 4, 0]}
               />
             </BarChart>

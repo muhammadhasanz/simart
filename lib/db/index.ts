@@ -16,9 +16,8 @@
  * query-time rather than at module-load time.
  *
  * Consumers always import { db } from '@/lib/db' and get a Drizzle instance
- * regardless of the active driver.  The exported `driver` string lets other
- * modules (e.g. lib/auth.ts) know which path is active without re-checking
- * the env vars themselves.
+ * regardless of the active driver (unless using 'gas'). The exported `driver` string
+ * lets other modules know which path is active without re-checking env vars.
  */
 
 import * as schema from './schema'
@@ -54,7 +53,10 @@ function sqliteBindingExists(): boolean {
   }
 }
 
-export const driver: 'postgres' | 'sqlite' =
+export const driver: 'postgres' | 'sqlite' | 'gas' =
+  process.env.DB_DRIVER === 'gas' ? 'gas' :
+  process.env.DB_DRIVER === 'sqlite' ? 'sqlite' :
+  process.env.DB_DRIVER === 'postgres' ? 'postgres' :
   postgresUrl ? 'postgres' : sqliteBindingExists() ? 'sqlite' : 'postgres'
 
 // ─── Postgres (Supabase) path ─────────────────────────────────────────────────
@@ -146,7 +148,7 @@ function buildSqliteDb() {
 }
 
 // Build the appropriate instance once and re-export it
-let _db: ReturnType<typeof buildPostgresDb>['db'] | ReturnType<typeof buildSqliteDb>['db']
+let _db: any // ReturnType<typeof buildPostgresDb>['db'] | ReturnType<typeof buildSqliteDb>['db']
 let _pool: import('pg').Pool | undefined
 let _sqlite: import('better-sqlite3').Database | undefined
 
@@ -154,7 +156,13 @@ if (driver === 'postgres') {
   const { db, pool } = buildPostgresDb()
   _db = db
   _pool = pool
+} else if (driver === 'sqlite') {
+  const { db, sqlite } = buildSqliteDb()
+  _db = db
+  _sqlite = sqlite
 } else {
+  // 'gas' driver (Hybrid architecture)
+  // We still initialize SQLite because Better Auth needs it for sessions/users
   const { db, sqlite } = buildSqliteDb()
   _db = db
   _sqlite = sqlite

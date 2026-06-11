@@ -8,7 +8,7 @@ interface GenderChartProps {
   female: number
 }
 
-const COLORS = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))']
+const COLORS = ['#3b82f6', '#ec4899']
 
 export function GenderChart({ male, female }: GenderChartProps) {
   const data = [

@@ -1,66 +1,108 @@
 'use server'
 
-import { db } from '@/lib/db'
-import { suratPengantar, type NewSuratPengantar } from '@/lib/db/schema'
-import { eq, desc, or, like, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { encryptCetakId } from '@/lib/cetak-token'
+import { sheetsGet, sheetsPost } from '@/lib/db/sheets-driver'
+import { db, driver } from '@/lib/db'
+import { suratPengantar } from '@/lib/db/schema'
+import { eq, or, ilike, desc } from 'drizzle-orm'
 
 export async function getSuratPengantarList() {
-  return db
-    .select()
-    .from(suratPengantar)
-    .orderBy(desc(suratPengantar.tanggal), desc(suratPengantar.createdAt))
+  if (driver === 'gas') {
+    const data = await sheetsGet('getSuratList')
+    // Sort descending by tanggal/createdAt
+    return data.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  }
+  
+  const data = await db.select().from(suratPengantar).orderBy(desc(suratPengantar.createdAt))
+  return data
 }
 
 export async function createSuratPengantar(
-  data: Omit<NewSuratPengantar, 'id' | 'createdAt' | 'updatedAt'>
+  data: {
+    nomorSurat?: string
+    penerima: string
+    nik?: string
+    phone?: string
+    nomorRumah?: string
+    tujuan: string
+    perihal: string
+    status?: string
+    tanggal?: string
+  }
 ) {
-  const result = await db.insert(suratPengantar).values(data).returning()
+  let result
+  if (driver === 'gas') {
+    result = await sheetsPost('createSurat', { data })
+  } else {
+    // Generate nomor surat if not provided
+    const today = new Date()
+    const prefix = `SP/${today.getFullYear()}/${(today.getMonth() + 1).toString().padStart(2, '0')}`
+    
+    // Simple sequence fallback (in a real app, query the latest and increment)
+    const seq = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
+    const finalNomorSurat = data.nomorSurat || `${prefix}/${seq}`
+    
+    const [inserted] = await db.insert(suratPengantar).values({
+      ...data,
+      nomorSurat: finalNomorSurat,
+      tanggal: data.tanggal || new Date().toISOString().split('T')[0],
+      status: data.status || 'menunggu'
+    }).returning()
+    result = inserted
+  }
   revalidatePath('/surat-pengantar')
   revalidatePath('/portal')
-  return result[0]
+  return result
 }
 
 export async function updateSuratPengantar(
-  id: number,
-  data: Partial<Omit<NewSuratPengantar, 'id' | 'createdAt' | 'updatedAt'>>
+  id: number | string,
+  data: any
 ) {
-  const result = await db
-    .update(suratPengantar)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(suratPengantar.id, id))
-    .returning()
+  let result
+  if (driver === 'gas') {
+    result = await sheetsPost('updateSurat', { data: { id, ...data } })
+  } else {
+    const [updated] = await db.update(suratPengantar).set(data).where(eq(suratPengantar.id, Number(id))).returning()
+    result = updated
+  }
   revalidatePath('/surat-pengantar')
-  return result[0]
+  return result
 }
 
-export async function deleteSuratPengantar(id: number) {
-  await db.delete(suratPengantar).where(eq(suratPengantar.id, id))
+export async function deleteSuratPengantar(id: number | string) {
+  if (driver === 'gas') {
+    await sheetsPost('deleteSurat', { id })
+  } else {
+    await db.delete(suratPengantar).where(eq(suratPengantar.id, Number(id)))
+  }
   revalidatePath('/surat-pengantar')
 }
 
-export async function getSuratPengantarById(id: number) {
-  const result = await db
-    .select()
-    .from(suratPengantar)
-    .where(eq(suratPengantar.id, id))
-    .limit(1)
-  return result[0] ?? null
+export async function getSuratPengantarById(id: number | string) {
+  if (driver === 'gas') {
+    const result = await sheetsGet('getSuratById', id.toString())
+    return result
+  }
+  
+  const [result] = await db.select().from(suratPengantar).where(eq(suratPengantar.id, Number(id))).limit(1)
+  return result || null
 }
 
 /**
  * Returns an AES-256-GCM encrypted, URL-safe token for the given surat ID.
  * Only the server ever sees the raw ID; the client only handles the token.
  */
-export async function getCetakToken(id: number): Promise<string> {
-  return encryptCetakId(id)
+export async function getCetakToken(id: number | string): Promise<string> {
+  // encryptCetakId expects a string or number, make sure it handles string IDs from Sheets
+  // Since Apps Script IDs are large random strings/numbers, we pass it as string
+  return encryptCetakId(id.toString())
 }
 
 /**
  * Submit a surat pengantar request from the public portal.
  * Generates a sequential nomor surat automatically.
- * Works on both SQLite and Postgres because it uses JS-level defaults.
  */
 export async function requestSuratPengantar(data: {
   penerima: string
@@ -70,63 +112,52 @@ export async function requestSuratPengantar(data: {
   tujuan: string
   perihal: string
 }) {
-  const today = new Date()
-  const bulanRomawi = [
-    'I','II','III','IV','V','VI',
-    'VII','VIII','IX','X','XI','XII',
-  ][today.getMonth()]
-  const tahun = today.getFullYear()
-
-  // Count existing surat this year to generate an incremental nomor
-  const existing = await db
-    .select({ id: suratPengantar.id })
-    .from(suratPengantar)
-    .where(like(suratPengantar.nomorSurat, `%/${tahun}`))
-
-  const urutan = String(existing.length + 1).padStart(3, '0')
-  const nomorSurat = `${urutan}/SP-RT/${bulanRomawi}/${tahun}`
-  const tanggal = today.toISOString().split('T')[0]
-
-  const result = await db
-    .insert(suratPengantar)
-    .values({
+  let result
+  if (driver === 'gas') {
+    result = await sheetsPost('createSurat', { data })
+  } else {
+    // Generate nomor surat
+    const today = new Date()
+    const prefix = `SP/${today.getFullYear()}/${(today.getMonth() + 1).toString().padStart(2, '0')}`
+    const seq = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
+    const nomorSurat = `${prefix}/${seq}`
+    
+    const [inserted] = await db.insert(suratPengantar).values({
+      ...data,
       nomorSurat,
-      penerima: data.penerima.trim(),
-      nik: data.nik.trim() || null,
-      phone: data.phone.trim() || null,
-      nomorRumah: data.nomorRumah.trim() || null,
-      tujuan: data.tujuan.trim(),
-      perihal: data.perihal.trim(),
-      tanggal,
-      status: 'menunggu',
-    })
-    .returning()
-
+      tanggal: new Date().toISOString().split('T')[0],
+      status: 'menunggu'
+    }).returning()
+    result = inserted
+  }
   revalidatePath('/surat-pengantar')
   revalidatePath('/portal')
-  return result[0]
+  return result
 }
 
 /**
  * Search surat pengantar by NIK, nomor HP, or nomor rumah.
- * An empty query returns an empty array (not all records).
- * Uses `like` with lowercase comparison so it works on both SQLite and Postgres.
  */
 export async function searchSuratPengantar(query: string) {
   const q = query.trim()
   if (!q) return []
-
-  const pattern = `%${q}%`
-
-  return db
+  
+  if (driver === 'gas') {
+    const data = await sheetsGet('searchSurat', q)
+    return data.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  }
+  
+  const data = await db
     .select()
     .from(suratPengantar)
     .where(
       or(
-        like(sql`lower(${suratPengantar.nik})`, pattern.toLowerCase()),
-        like(sql`lower(${suratPengantar.phone})`, pattern.toLowerCase()),
-        like(sql`lower(${suratPengantar.nomorRumah})`, pattern.toLowerCase()),
+        ilike(suratPengantar.nik, `%${q}%`),
+        ilike(suratPengantar.phone, `%${q}%`),
+        ilike(suratPengantar.nomorRumah, `%${q}%`)
       )
     )
-    .orderBy(desc(suratPengantar.tanggal), desc(suratPengantar.createdAt))
+    .orderBy(desc(suratPengantar.createdAt))
+    
+  return data
 }

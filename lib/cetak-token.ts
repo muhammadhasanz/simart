@@ -43,10 +43,10 @@ function fromUrlSafeBase64(str: string): Buffer {
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 /**
- * Encrypts a numeric surat-pengantar ID into a URL-safe token.
+ * Encrypts a numeric or string surat-pengantar ID into a URL-safe token.
  * The token is safe to embed directly in a URL path segment.
  */
-export function encryptCetakId(id: number): string {
+export function encryptCetakId(id: string | number): string {
   const key = deriveKey()
   const iv = randomBytes(12) // 96-bit IV recommended for GCM
   const cipher = createCipheriv('aes-256-gcm', key, iv)
@@ -62,9 +62,9 @@ export function encryptCetakId(id: number): string {
 
 /**
  * Decrypts a token produced by `encryptCetakId`.
- * Returns the original numeric ID, or `null` if the token is invalid/tampered.
+ * Returns the original ID, or `null` if the token is invalid/tampered.
  */
-export function decryptCetakToken(token: string): number | null {
+export function decryptCetakToken(token: string): string | null {
   try {
     const key = deriveKey()
     const combined = fromUrlSafeBase64(token)
@@ -80,9 +80,9 @@ export function decryptCetakToken(token: string): number | null {
     decipher.setAuthTag(authTag)
 
     const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()])
-    const id = parseInt(decrypted.toString('utf8'), 10)
+    const idStr = decrypted.toString('utf8')
 
-    return isNaN(id) ? null : id
+    return idStr || null
   } catch {
     // Decryption failure (tampered token, wrong key, etc.)
     return null

@@ -9,7 +9,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { format } from 'date-fns'
+import { format, isValid } from 'date-fns'
 import { id } from 'date-fns/locale'
 import type { Resident } from '@/lib/db/schema'
 
@@ -73,11 +73,12 @@ export function RecentResidents({ residents }: RecentResidentsProps) {
                     {resident.nik}
                   </TableCell>
                   <TableCell>
-                    {resident.createdAt
-                      ? format(new Date(resident.createdAt), 'd MMM yyyy', {
-                          locale: id,
-                        })
-                      : '-'}
+                    {(() => {
+                      const d = resident.createdAt ? new Date(resident.createdAt) : null
+                      return d && isValid(d)
+                        ? format(d, 'd MMM yyyy', { locale: id })
+                        : '-'
+                    })()}
                   </TableCell>
                   <TableCell>
                     <Badge variant={statusVariants[resident.residentStatus || 'active']}>

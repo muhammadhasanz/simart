@@ -55,7 +55,9 @@ services:
     environment:
       NODE_ENV: development
       NEXT_TELEMETRY_DISABLED: 1
-      BETTER_AUTH_URL: http://localhost:3000
+      # BETTER_AUTH_URL: http://localhost:3111
+      DB_DRIVER: gas
+      DB_URL: https://script.google.com/macros/s/AKfycbx67Rg3XAvJHg9tNgqiVar_QOGCSY3DuIOyAsTEYUdIqmltRbWIuNX1dI73t8kOhzqq/exec
     networks:
       - nextjs-network
 

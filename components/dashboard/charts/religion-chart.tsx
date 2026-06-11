@@ -8,11 +8,12 @@ interface ReligionChartProps {
 }
 
 const COLORS = [
-  'hsl(var(--chart-1))',
-  'hsl(var(--chart-2))',
-  'hsl(var(--chart-3))',
-  'hsl(var(--chart-4))',
-  'hsl(var(--chart-5))',
+  '#f59e0b',
+  '#3b82f6',
+  '#10b981',
+  '#8b5cf6',
+  '#ef4444',
+  '#06b6d4',
 ]
 
 const religionLabels: Record<string, string> = {

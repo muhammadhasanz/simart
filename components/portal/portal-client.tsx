@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Card,
   CardContent,
@@ -21,6 +22,14 @@ import {
   TabsContent,
 } from '@/components/ui/tabs'
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import {
   Megaphone,
   BarChart2,
   CheckCircle2,
@@ -31,6 +40,10 @@ import {
   Send,
   ClipboardCheck,
   Printer,
+  PieChart,
+  Wallet,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react'
 import {
   getPengumumanList,
@@ -38,18 +51,28 @@ import {
   castVote,
   type PollWithOptions,
 } from '@/app/actions/informasi'
-import {
-  requestSuratPengantar,
-  searchSuratPengantar,
-  getCetakToken,
-} from '@/app/actions/surat-pengantar'
-import type { Pengumuman, SuratPengantar } from '@/lib/db/schema'
+import { requestSuratPengantar, searchSuratPengantar, getCetakToken } from '@/app/actions/surat-pengantar'
+import type { Pengumuman, SuratPengantar, KasIuran } from '@/lib/db/schema'
+import { generateFingerprint, getOrCreateVoterToken } from '@/lib/voter-identity'
+
+import { StatsCards } from '@/components/dashboard/stats-cards'
+import { GenderChart } from '@/components/dashboard/charts/gender-chart'
+import { AgeChart } from '@/components/dashboard/charts/age-chart'
+import { ReligionChart } from '@/components/dashboard/charts/religion-chart'
+import { OccupationChart } from '@/components/dashboard/charts/occupation-chart'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Props = {
   initialPengumuman: Pengumuman[]
   initialPolls: PollWithOptions[]
+  residentStats: { total: number; male: number; female: number; newThisMonth: number }
+  familyStats: { total: number }
+  ageDistribution: any[]
+  religionComposition: any[]
+  occupationBreakdown: any[]
+  kasIuranList: KasIuran[]
+  kasIuranSummary: { totalMasuk: number; totalKeluar: number; saldo: number }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -76,34 +99,62 @@ function formatDate(d: string) {
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-export function PortalClient({ initialPengumuman, initialPolls }: Props) {
+export function PortalClient(props: Props) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const currentTab = searchParams.get('tab') || 'statistik'
+
+  function handleTabChange(value: string) {
+    router.push(`?tab=${value}`, { scroll: false })
+  }
+
   return (
-    <Tabs defaultValue="pengumuman" className="flex flex-col gap-4">
-      <TabsList className="w-full">
-        <TabsTrigger value="pengumuman" className="flex-1 gap-2">
-          <Megaphone className="h-4 w-4" />
-          Pengumuman
+    <Tabs value={currentTab} onValueChange={handleTabChange} className="flex flex-col gap-4 pb-24 sm:pb-0">
+      <TabsList className="grid grid-cols-5 h-auto gap-1 z-50 sm:relative sm:w-full max-sm:fixed max-sm:bottom-6 max-sm:left-1/2 max-sm:-translate-x-1/2 max-sm:w-[calc(100%-2rem)] max-sm:shadow-2xl max-sm:border max-sm:border-border/50 max-sm:bg-muted/90 max-sm:backdrop-blur-lg max-sm:pb-10 max-sm:rounded-lg">
+        <TabsTrigger value="statistik" className="gap-2 max-sm:py-2">
+          <PieChart className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:block truncate">Statistik</span>
         </TabsTrigger>
-        <TabsTrigger value="polling" className="flex-1 gap-2">
-          <BarChart2 className="h-4 w-4" />
-          Polling
+        <TabsTrigger value="kas" className="gap-2 max-sm:py-2">
+          <Wallet className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:block truncate">Kas</span>
         </TabsTrigger>
-        <TabsTrigger value="surat" className="flex-1 gap-2">
-          <FileText className="h-4 w-4" />
-          Surat
+        <TabsTrigger value="pengumuman" className="gap-2 max-sm:py-2">
+          <Megaphone className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:block truncate">Pengumuman</span>
+        </TabsTrigger>
+        <TabsTrigger value="polling" className="gap-2 max-sm:py-2">
+          <BarChart2 className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:block truncate">Polling</span>
+        </TabsTrigger>
+        <TabsTrigger value="surat" className="gap-2 max-sm:py-2">
+          <FileText className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:block truncate">Surat</span>
         </TabsTrigger>
       </TabsList>
 
+
       <TabsContent value="pengumuman">
-        <PengumumanPanel initialItems={initialPengumuman} />
+        <PengumumanPanel initialItems={props.initialPengumuman} />
       </TabsContent>
 
       <TabsContent value="polling">
-        <PollingPanel initialPolls={initialPolls} />
+        <PollingPanel initialPolls={props.initialPolls} />
       </TabsContent>
 
       <TabsContent value="surat">
         <SuratPengantarPanel />
+      </TabsContent>
+
+      <TabsContent value="statistik">
+        <StatistikPanel {...props} />
+      </TabsContent>
+
+      <TabsContent value="kas">
+        <KasIuranPanel
+          kasIuranList={props.kasIuranList}
+          kasIuranSummary={props.kasIuranSummary}
+        />
       </TabsContent>
     </Tabs>
   )
@@ -115,6 +166,10 @@ function PengumumanPanel({ initialItems }: { initialItems: Pengumuman[] }) {
   const [items, setItems] = useState<Pengumuman[]>(initialItems)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setItems(initialItems)
+  }, [initialItems])
 
   function handleRefresh() {
     setError(null)
@@ -177,7 +232,7 @@ function PengumumanPanel({ initialItems }: { initialItems: Pengumuman[] }) {
                     <Badge variant={kategoriVariant[item.kategori ?? 'umum']}>
                       {kategoriLabel[item.kategori ?? 'umum']}
                     </Badge>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-xs text-muted-foreground" suppressHydrationWarning>
                       {item.tanggal ? formatDate(item.tanggal) : '-'}
                     </span>
                   </div>
@@ -203,7 +258,8 @@ function PengumumanPanel({ initialItems }: { initialItems: Pengumuman[] }) {
 
 function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
   const [polls, setPolls] = useState<PollWithOptions[]>(initialPolls)
-  // pollId -> chosen optionId (session only — not persisted to DB per user)
+  // pollId -> chosen optionId (persisted to localStorage)
+  // if optionId is -1, it means we know they voted (from server error) but not which one
   const [votedMap, setVotedMap] = useState<Record<number, number>>({})
   // pollId -> chosen optionId before submitting
   const [selectedMap, setSelectedMap] = useState<Record<number, number>>({})
@@ -211,8 +267,37 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
   const [voteErrors, setVoteErrors] = useState<Record<number, string>>({})
   // pollId -> 'voting' | 'done' | 'error'
   const [voteStatus, setVoteStatus] = useState<Record<number, string>>({})
-  const [isPending, startTransition] = useTransition()
+  const [isRefreshing, startRefresh] = useTransition()
+  const [isVotingTransition, startVoting] = useTransition()
   const [error, setError] = useState<string | null>(null)
+
+  // For confirmation dialog
+  const [confirmPollId, setConfirmPollId] = useState<number | null>(null)
+
+  useEffect(() => {
+    try {
+      const storedVotedMap = localStorage.getItem('voted_map')
+      if (storedVotedMap) {
+        setVotedMap(JSON.parse(storedVotedMap))
+      } else {
+        // Migration from old array-based tracking
+        const storedOld = localStorage.getItem('voted_polls')
+        if (storedOld) {
+          const oldSet = JSON.parse(storedOld) as number[]
+          const newMap: Record<number, number> = {}
+          oldSet.forEach(id => newMap[id] = -1) // -1 means voted but unknown option
+          setVotedMap(newMap)
+          localStorage.setItem('voted_map', JSON.stringify(newMap))
+        }
+      }
+    } catch (e) {
+      // ignore JSON parse errors
+    }
+  }, [])
+
+  useEffect(() => {
+    setPolls(initialPolls)
+  }, [initialPolls])
 
   async function refreshPolls() {
     const fresh = await getPollsWithOptions()
@@ -221,7 +306,7 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
 
   function handleRefresh() {
     setError(null)
-    startTransition(async () => {
+    startRefresh(async () => {
       try {
         await refreshPolls()
       } catch {
@@ -256,14 +341,42 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
     if (votedMap[pollId] !== undefined) return
 
     setVoteStatus((prev) => ({ ...prev, [pollId]: 'voting' }))
-    startTransition(async () => {
+    startVoting(async () => {
       try {
-        await castVote(optionId)
-        setVotedMap((prev) => ({ ...prev, [pollId]: optionId }))
+        const ipRes = await fetch('/api/voter-ip')
+        const { ip } = await ipRes.json()
+        const fingerprint = await generateFingerprint()
+        const voterToken = getOrCreateVoterToken()
+
+        await castVote(optionId, { fingerprint, voterToken, ip })
+
+        // Optimistic update
+        setPolls((prev) =>
+          prev.map(p => p.id == pollId ? {
+            ...p,
+            opsi: p.opsi.map(o => o.id == optionId ? { ...o, suara: Number(o.suara) + 1 } : o)
+          } : p)
+        )
+
+        const nextMap = { ...votedMap, [pollId]: optionId }
+        setVotedMap(nextMap)
+        localStorage.setItem('voted_map', JSON.stringify(nextMap))
+
         setVoteStatus((prev) => ({ ...prev, [pollId]: 'done' }))
         await refreshPolls()
-      } catch {
-        setVoteStatus((prev) => ({ ...prev, [pollId]: 'error' }))
+      } catch (err: any) {
+        if (err?.message === 'ALREADY_VOTED' || err?.message?.includes('ALREADY_VOTED')) {
+          setVoteErrors((prev) => ({
+            ...prev,
+            [pollId]: 'Kamu sudah pernah memilih di polling ini.',
+          }))
+          const nextMap = { ...votedMap, [pollId]: -1 }
+          setVotedMap(nextMap)
+          localStorage.setItem('voted_map', JSON.stringify(nextMap))
+          setVoteStatus((prev) => ({ ...prev, [pollId]: 'done' }))
+        } else {
+          setVoteStatus((prev) => ({ ...prev, [pollId]: 'error' }))
+        }
       }
     })
   }
@@ -272,7 +385,7 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
     <section aria-label="Daftar Polling" className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {isPending ? (
+          {isRefreshing ? (
             <span className="inline-flex items-center gap-1.5">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Memuat...
@@ -285,7 +398,7 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
           variant="ghost"
           size="sm"
           onClick={handleRefresh}
-          disabled={isPending}
+          disabled={isRefreshing}
           className="text-xs h-7 px-2"
         >
           Muat Ulang
@@ -299,7 +412,7 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
         </div>
       )}
 
-      {isPending && polls.length === 0 ? (
+      {isRefreshing && polls.length === 0 ? (
         <LoadingSkeleton count={2} tall />
       ) : polls.length === 0 ? (
         <EmptyState
@@ -311,6 +424,8 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
         <ul className="flex flex-col gap-4">
           {polls.map((poll) => {
             const totalSuara = poll.opsi.reduce((s, o) => s + o.suara, 0)
+            const maxSuara = Math.max(...poll.opsi.map((o) => o.suara))
+            const hasVotes = totalSuara > 0
             const sudahVote = votedMap[poll.id] !== undefined
             const votedOpsiId = votedMap[poll.id]
             const selectedOpsiId = selectedMap[poll.id]
@@ -323,7 +438,7 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
               <li key={poll.id}>
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardDescription>
+                    <CardDescription suppressHydrationWarning>
                       {poll.tanggal ? formatDate(poll.tanggal) : '-'}
                     </CardDescription>
                     <CardTitle className="text-base leading-snug">
@@ -347,6 +462,7 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
                             : 0
                         const isThisVoted = votedOpsiId === opsi.id
                         const isThisSelected = selectedOpsiId === opsi.id
+                        const isLeading = hasVotes && opsi.suara === maxSuara
 
                         return (
                           <li key={opsi.id}>
@@ -360,15 +476,15 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
                                     )}
                                     <span
                                       className={
-                                        isThisVoted
-                                          ? 'font-medium text-foreground'
+                                        isLeading || isThisVoted
+                                          ? 'font-bold text-foreground'
                                           : 'text-foreground'
                                       }
                                     >
                                       {opsi.teks}
                                     </span>
                                   </div>
-                                  <span className="text-muted-foreground text-xs whitespace-nowrap">
+                                  <span className={isLeading ? "font-medium text-foreground text-xs whitespace-nowrap" : "text-muted-foreground text-xs whitespace-nowrap"}>
                                     {opsi.suara} suara ({pct}%)
                                   </span>
                                 </div>
@@ -381,9 +497,12 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
                                   aria-label={`${opsi.teks}: ${pct}%`}
                                 >
                                   <div
-                                    className={`h-full rounded-full transition-all duration-500 ${
-                                      isThisVoted ? 'bg-primary' : 'bg-muted-foreground/40'
-                                    }`}
+                                    className={`h-full rounded-full transition-all duration-500 ${isThisVoted
+                                      ? 'bg-primary'
+                                      : isLeading
+                                        ? 'bg-muted-foreground'
+                                        : 'bg-muted-foreground/40'
+                                      }`}
                                     style={{ width: `${pct}%` }}
                                   />
                                 </div>
@@ -396,19 +515,17 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
                                 aria-checked={isThisSelected}
                                 onClick={() => handleSelect(poll.id, opsi.id)}
                                 disabled={isVoting}
-                                className={`w-full rounded-md border px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60 ${
-                                  isThisSelected
-                                    ? 'border-primary bg-primary/8 text-foreground font-medium'
-                                    : 'border-border bg-card text-foreground hover:bg-accent hover:text-accent-foreground'
-                                }`}
+                                className={`w-full rounded-md border px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60 ${isThisSelected
+                                  ? 'border-primary bg-primary/8 text-foreground font-medium'
+                                  : 'border-border bg-card text-foreground hover:bg-accent hover:text-accent-foreground'
+                                  }`}
                               >
                                 <span className="flex items-center gap-2">
                                   <span
-                                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
-                                      isThisSelected
-                                        ? 'border-primary bg-primary'
-                                        : 'border-muted-foreground/40'
-                                    }`}
+                                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${isThisSelected
+                                      ? 'border-primary bg-primary'
+                                      : 'border-muted-foreground/40'
+                                      }`}
                                     aria-hidden="true"
                                   >
                                     {isThisSelected && (
@@ -448,8 +565,17 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
                         </span>
                         <Button
                           size="sm"
-                          onClick={() => handleVote(poll.id)}
-                          disabled={isVoting || isPending}
+                          onClick={() => {
+                            if (selectedMap[poll.id] === undefined) {
+                              setVoteErrors((prev) => ({
+                                ...prev,
+                                [poll.id]: 'Pilih salah satu opsi sebelum mengirim suara.',
+                              }))
+                              return
+                            }
+                            setConfirmPollId(poll.id)
+                          }}
+                          disabled={isVoting || isRefreshing}
                           className="gap-1.5"
                         >
                           {isVoting ? (
@@ -477,6 +603,41 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
           })}
         </ul>
       )}
+
+      {/* Confirmation Dialog */}
+      <Dialog
+        open={confirmPollId !== null}
+        onOpenChange={(open) => !open && setConfirmPollId(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Konfirmasi Pilihan</DialogTitle>
+            <DialogDescription>
+              Apakah Anda yakin ingin mengirim suara ini? Suara yang telah dikirim tidak dapat diubah kembali.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmPollId(null)}
+              disabled={isVotingTransition}
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={() => {
+                if (confirmPollId !== null) {
+                  handleVote(confirmPollId)
+                  setConfirmPollId(null)
+                }
+              }}
+              disabled={isVotingTransition}
+            >
+              Kirim Suara
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }
@@ -849,7 +1010,7 @@ function SuratResultItem({ surat }: { surat: SuratPengantar }) {
       </p>
       <p className="text-xs text-muted-foreground">{surat.perihal}</p>
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground" suppressHydrationWarning>
           {surat.tanggal ? formatDate(surat.tanggal) : '-'}
           {surat.tujuan ? ` · ${surat.tujuan}` : ''}
         </p>
@@ -911,5 +1072,116 @@ function EmptyState({
         <p className="text-xs text-muted-foreground max-w-xs mx-auto">{sub}</p>
       </div>
     </div>
+  )
+}
+
+// ── Statistik Panel ───────────────────────────────────────────────────────────
+
+function StatistikPanel(props: Props) {
+  return (
+    <section aria-label="Statistik RT" className="flex flex-col gap-6">
+      <StatsCards
+        totalResidents={props.residentStats.total}
+        totalFamilies={props.familyStats.total}
+        maleCount={props.residentStats.male}
+        femaleCount={props.residentStats.female}
+        newThisMonth={props.residentStats.newThisMonth}
+      />
+      <div className="grid gap-4 md:grid-cols-2">
+        <GenderChart male={props.residentStats.male} female={props.residentStats.female} />
+        <AgeChart data={props.ageDistribution} />
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <ReligionChart data={props.religionComposition} />
+        <OccupationChart data={props.occupationBreakdown} />
+      </div>
+    </section>
+  )
+}
+
+// ── Kas Iuran Panel ───────────────────────────────────────────────────────────
+
+function KasIuranPanel({
+  kasIuranList,
+  kasIuranSummary,
+}: {
+  kasIuranList: KasIuran[]
+  kasIuranSummary: { totalMasuk: number; totalKeluar: number; saldo: number }
+}) {
+  return (
+    <section aria-label="Laporan Kas Iuran" className="flex flex-col gap-6">
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Saldo Kas</CardTitle>
+            <Wallet className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              Rp {kasIuranSummary.saldo.toLocaleString('id-ID')}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Saldo saat ini</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Pemasukan</CardTitle>
+            <TrendingUp className="h-4 w-4 text-emerald-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              Rp {kasIuranSummary.totalMasuk.toLocaleString('id-ID')}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Pengeluaran</CardTitle>
+            <TrendingDown className="h-4 w-4 text-rose-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              Rp {kasIuranSummary.totalKeluar.toLocaleString('id-ID')}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-semibold">Riwayat Transaksi</CardTitle>
+          <CardDescription>Catatan aliran dana RT terkini.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {kasIuranList.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-10 text-muted-foreground">
+              <Wallet className="h-8 w-8 opacity-30" />
+              <p className="text-sm">Belum ada riwayat transaksi.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col divide-y divide-border border rounded-lg overflow-hidden">
+              {kasIuranList.map((kas) => (
+                <div key={kas.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4 bg-card hover:bg-muted/30 transition-colors">
+                  <div className="flex flex-col gap-1">
+                    <p className="text-sm font-medium leading-none">{kas.nama}</p>
+                    <p className="text-xs text-muted-foreground" suppressHydrationWarning>
+                      {kas.tanggal ? formatDate(kas.tanggal) : '-'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <Badge variant={kas.jenis === 'masuk' ? 'default' : 'destructive'} className="text-[10px] px-1.5 py-0">
+                      {kas.jenis === 'masuk' ? 'Pemasukan' : 'Pengeluaran'}
+                    </Badge>
+                    <span className={`text-sm font-semibold ${kas.jenis === 'masuk' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {kas.jenis === 'masuk' ? '+' : '-'}Rp {Number(kas.nominal).toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </section>
   )
 }

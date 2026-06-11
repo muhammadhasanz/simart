@@ -39,16 +39,14 @@ export async function createUser(data: { name: string; email: string; password: 
   const hashedPassword = await hashPassword(data.password)
 
   const newId = crypto.randomUUID()
-  const now = new Date()
-
-  // Insert user row
+  // Insert user row — omit createdAt/updatedAt so the DB-level DEFAULT handles
+  // them (TEXT DEFAULT datetime('now') on SQLite, $defaultFn on Postgres).
+  // Passing Date objects or ISO strings both fail across the pg-core/SQLite boundary.
   await db.insert(user).values({
     id: newId,
     name: data.name.trim() || data.email.split('@')[0],
     email: data.email.toLowerCase().trim(),
-    emailVerified: true, // admin-created accounts are pre-verified
-    createdAt: now,
-    updatedAt: now,
+    emailVerified: 'true', // admin-created accounts are pre-verified
   })
 
   // Insert credential account row (required so Better Auth can verify the password on login)
@@ -58,8 +56,6 @@ export async function createUser(data: { name: string; email: string; password: 
     providerId: 'credential',
     userId: newId,
     password: hashedPassword,
-    createdAt: now,
-    updatedAt: now,
   })
 
   revalidatePath('/pengguna')

@@ -1,9 +1,10 @@
 'use server'
 
-import { db } from '@/lib/db'
+import { db, driver } from '@/lib/db'
 import { families, residents, type NewFamily } from '@/lib/db/schema'
 import { eq, desc, ilike, or, and, count } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
+import { sheetsGet, sheetsPost } from '@/lib/db/sheets-driver'
 
 // Get all families with member count
 export async function getFamilies(params?: {
@@ -12,6 +13,31 @@ export async function getFamilies(params?: {
   offset?: number
 }) {
   const { search, limit = 10, offset = 0 } = params || {}
+
+  if (driver === 'gas') {
+    let allFams = await sheetsGet('getFamilies')
+    const allRes = await sheetsGet('getResidents')
+    
+    if (search) {
+      const s = search.toLowerCase()
+      allFams = allFams.filter((f: any) => 
+        (f.familyCardNumber && f.familyCardNumber.toLowerCase().includes(s)) ||
+        (f.address && f.address.toLowerCase().includes(s))
+      )
+    }
+
+    const total = allFams.length
+    allFams.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    const paginated = allFams.slice(offset, offset + limit)
+
+    return {
+      data: paginated.map((f: any) => {
+        const memberCount = allRes.filter((r: any) => r.familyId == f.id).length
+        return { ...f, memberCount }
+      }),
+      total,
+    }
+  }
 
   const conditions = []
 
@@ -54,11 +80,25 @@ export async function getFamilies(params?: {
 }
 
 // Get single family by ID with members
-export async function getFamilyById(id: number) {
+export async function getFamilyById(id: number | string) {
+  if (driver === 'gas') {
+    const allFams = await sheetsGet('getFamilies')
+    const fam = allFams.find((f: any) => f.id == id)
+    if (!fam) return null
+
+    const allRes = await sheetsGet('getResidents')
+    const members = allRes.filter((r: any) => r.familyId == id)
+
+    return {
+      ...fam,
+      members,
+    }
+  }
+
   const familyResult = await db
     .select()
     .from(families)
-    .where(eq(families.id, id))
+    .where(eq(families.id, Number(id)))
     .limit(1)
 
   if (familyResult.length === 0) return null
@@ -66,7 +106,7 @@ export async function getFamilyById(id: number) {
   const members = await db
     .select()
     .from(residents)
-    .where(eq(residents.familyId, id))
+    .where(eq(residents.familyId, Number(id)))
     .orderBy(residents.familyStatus)
 
   return {
@@ -77,6 +117,17 @@ export async function getFamilyById(id: number) {
 
 // Get all families for dropdown selection
 export async function getAllFamilies() {
+  if (driver === 'gas') {
+    const allFams = await sheetsGet('getFamilies')
+    return allFams
+      .map((f: any) => ({
+        id: f.id,
+        familyCardNumber: f.familyCardNumber,
+        address: f.address,
+      }))
+      .sort((a: any, b: any) => (a.familyCardNumber || '').localeCompare(b.familyCardNumber || ''))
+  }
+
   return db
     .select({
       id: families.id,
@@ -89,36 +140,56 @@ export async function getAllFamilies() {
 
 // Create new family
 export async function createFamily(data: NewFamily) {
-  const result = await db.insert(families).values(data).returning()
+  let result
+  if (driver === 'gas') {
+    result = await sheetsPost('createFamily', { data })
+  } else {
+    const res = await db.insert(families).values(data).returning()
+    result = res[0]
+  }
   revalidatePath('/keluarga')
   revalidatePath('/')
-  return result[0]
+  return result
 }
 
 // Update family
-export async function updateFamily(id: number, data: Partial<NewFamily>) {
-  const result = await db
-    .update(families)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(families.id, id))
-    .returning()
+export async function updateFamily(id: number | string, data: Partial<NewFamily>) {
+  let result
+  if (driver === 'gas') {
+    result = await sheetsPost('updateFamily', { data: { id, ...data } })
+  } else {
+    const res = await db
+      .update(families)
+      .set({ ...data, updatedAt: new Date().toISOString() })
+      .where(eq(families.id, Number(id)))
+      .returning()
+    result = res[0]
+  }
   revalidatePath('/keluarga')
   revalidatePath(`/keluarga/${id}`)
   revalidatePath('/')
-  return result[0]
+  return result
 }
 
 // Delete family
-export async function deleteFamily(id: number) {
-  await db.delete(families).where(eq(families.id, id))
+export async function deleteFamily(id: number | string) {
+  if (driver === 'gas') {
+    await sheetsPost('deleteFamily', { id })
+  } else {
+    await db.delete(families).where(eq(families.id, Number(id)))
+  }
   revalidatePath('/keluarga')
   revalidatePath('/')
 }
 
 // Get family statistics
 export async function getFamilyStats() {
-  const totalFamilies = await db.select({ count: count() }).from(families)
+  if (driver === 'gas') {
+    const allFams = await sheetsGet('getFamilies')
+    return { total: allFams.length }
+  }
 
+  const totalFamilies = await db.select({ count: count() }).from(families)
   return {
     total: totalFamilies[0].count,
   }

@@ -152,6 +152,15 @@ export function initSqliteTables(sqlite: Database) {
       teks     TEXT NOT NULL,
       suara    INTEGER NOT NULL DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS poll_votes (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      poll_id      INTEGER NOT NULL,
+      fingerprint  TEXT,
+      voter_token  TEXT,
+      ip           TEXT,
+      voted_at     TEXT DEFAULT (datetime('now'))
+    );
   `)
 
   // Column migrations — run each ALTER TABLE in its own try/catch because

@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  allowedDevOrigins: ['simart.keithritherus.my.id', 'http://localhost:3111'],
   typescript: {
     ignoreBuildErrors: true,
   },
