@@ -45,6 +45,7 @@ import {
   TrendingUp,
   TrendingDown,
 } from 'lucide-react'
+
 import {
   getPengumumanList,
   getPollsWithOptions,
@@ -52,6 +53,15 @@ import {
   type PollWithOptions,
 } from '@/app/actions/informasi'
 import { requestSuratPengantar, searchSuratPengantar, getCetakToken } from '@/app/actions/surat-pengantar'
+import {
+  getResidentStats,
+  getAgeDistribution,
+  getReligionComposition,
+  getOccupationBreakdown,
+} from '@/app/actions/residents'
+import { getFamilyStats } from '@/app/actions/families'
+import { getKasIuranList, getKasIuranSummary } from '@/app/actions/kas-iuran'
+
 import type { Pengumuman, SuratPengantar, KasIuran } from '@/lib/db/schema'
 import { generateFingerprint, getOrCreateVoterToken } from '@/lib/voter-identity'
 
@@ -60,20 +70,7 @@ import { GenderChart } from '@/components/dashboard/charts/gender-chart'
 import { AgeChart } from '@/components/dashboard/charts/age-chart'
 import { ReligionChart } from '@/components/dashboard/charts/religion-chart'
 import { OccupationChart } from '@/components/dashboard/charts/occupation-chart'
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type Props = {
-  initialPengumuman: Pengumuman[]
-  initialPolls: PollWithOptions[]
-  residentStats: { total: number; male: number; female: number; newThisMonth: number }
-  familyStats: { total: number }
-  ageDistribution: any[]
-  religionComposition: any[]
-  occupationBreakdown: any[]
-  kasIuranList: KasIuran[]
-  kasIuranSummary: { totalMasuk: number; totalKeluar: number; saldo: number }
-}
+import { CardListSkeleton } from '@/components/ui/card-list-skeleton'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -99,7 +96,7 @@ function formatDate(d: string) {
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
-export function PortalClient(props: Props) {
+export function PortalClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const currentTab = searchParams.get('tab') || 'statistik'
@@ -133,28 +130,24 @@ export function PortalClient(props: Props) {
         </TabsTrigger>
       </TabsList>
 
-
-      <TabsContent value="pengumuman">
-        <PengumumanPanel initialItems={props.initialPengumuman} />
+      <TabsContent value="pengumuman" keepMounted>
+        <PengumumanPanel />
       </TabsContent>
 
-      <TabsContent value="polling">
-        <PollingPanel initialPolls={props.initialPolls} />
+      <TabsContent value="polling" keepMounted>
+        <PollingPanel />
       </TabsContent>
 
-      <TabsContent value="surat">
+      <TabsContent value="surat" keepMounted>
         <SuratPengantarPanel />
       </TabsContent>
 
-      <TabsContent value="statistik">
-        <StatistikPanel {...props} />
+      <TabsContent value="statistik" keepMounted>
+        <StatistikPanel />
       </TabsContent>
 
-      <TabsContent value="kas">
-        <KasIuranPanel
-          kasIuranList={props.kasIuranList}
-          kasIuranSummary={props.kasIuranSummary}
-        />
+      <TabsContent value="kas" keepMounted>
+        <KasIuranPanel />
       </TabsContent>
     </Tabs>
   )
@@ -162,14 +155,19 @@ export function PortalClient(props: Props) {
 
 // ── Pengumuman Panel ──────────────────────────────────────────────────────────
 
-function PengumumanPanel({ initialItems }: { initialItems: Pengumuman[] }) {
-  const [items, setItems] = useState<Pengumuman[]>(initialItems)
+function PengumumanPanel() {
+  const [items, setItems] = useState<Pengumuman[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setItems(initialItems)
-  }, [initialItems])
+    let mounted = true
+    getPengumumanList()
+      .then(res => { if (mounted) { setItems(res); setIsLoading(false) } })
+      .catch(() => { if (mounted) { setError('Gagal memuat pengumuman'); setIsLoading(false) } })
+    return () => { mounted = false }
+  }, [])
 
   function handleRefresh() {
     setError(null)
@@ -187,7 +185,7 @@ function PengumumanPanel({ initialItems }: { initialItems: Pengumuman[] }) {
     <section aria-label="Daftar Pengumuman" className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {isPending ? (
+          {isLoading || isPending ? (
             <span className="inline-flex items-center gap-1.5">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Memuat...
@@ -200,7 +198,7 @@ function PengumumanPanel({ initialItems }: { initialItems: Pengumuman[] }) {
           variant="ghost"
           size="sm"
           onClick={handleRefresh}
-          disabled={isPending}
+          disabled={isLoading || isPending}
           className="text-xs h-7 px-2"
         >
           Muat Ulang
@@ -214,8 +212,8 @@ function PengumumanPanel({ initialItems }: { initialItems: Pengumuman[] }) {
         </div>
       )}
 
-      {isPending && items.length === 0 ? (
-        <LoadingSkeleton count={3} />
+      {isLoading ? (
+        <CardListSkeleton count={3} />
       ) : items.length === 0 ? (
         <EmptyState
           icon={<Megaphone className="h-10 w-10 opacity-30" />}
@@ -256,48 +254,33 @@ function PengumumanPanel({ initialItems }: { initialItems: Pengumuman[] }) {
 
 // ── Polling Panel ─────────────────────────────────────────────────────────────
 
-function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
-  const [polls, setPolls] = useState<PollWithOptions[]>(initialPolls)
-  // pollId -> chosen optionId (persisted to localStorage)
-  // if optionId is -1, it means we know they voted (from server error) but not which one
+function PollingPanel() {
+  const [polls, setPolls] = useState<PollWithOptions[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [votedMap, setVotedMap] = useState<Record<number, number>>({})
-  // pollId -> chosen optionId before submitting
   const [selectedMap, setSelectedMap] = useState<Record<number, number>>({})
-  // pollId -> validation error
   const [voteErrors, setVoteErrors] = useState<Record<number, string>>({})
-  // pollId -> 'voting' | 'done' | 'error'
   const [voteStatus, setVoteStatus] = useState<Record<number, string>>({})
   const [isRefreshing, startRefresh] = useTransition()
   const [isVotingTransition, startVoting] = useTransition()
   const [error, setError] = useState<string | null>(null)
-
-  // For confirmation dialog
   const [confirmPollId, setConfirmPollId] = useState<number | null>(null)
 
   useEffect(() => {
+    let mounted = true
+    getPollsWithOptions()
+      .then(res => { if (mounted) { setPolls(res); setIsLoading(false) } })
+      .catch(() => { if (mounted) { setError('Gagal memuat polling'); setIsLoading(false) } })
+
     try {
       const storedVotedMap = localStorage.getItem('voted_map')
       if (storedVotedMap) {
         setVotedMap(JSON.parse(storedVotedMap))
-      } else {
-        // Migration from old array-based tracking
-        const storedOld = localStorage.getItem('voted_polls')
-        if (storedOld) {
-          const oldSet = JSON.parse(storedOld) as number[]
-          const newMap: Record<number, number> = {}
-          oldSet.forEach(id => newMap[id] = -1) // -1 means voted but unknown option
-          setVotedMap(newMap)
-          localStorage.setItem('voted_map', JSON.stringify(newMap))
-        }
       }
-    } catch (e) {
-      // ignore JSON parse errors
-    }
-  }, [])
+    } catch (e) { }
 
-  useEffect(() => {
-    setPolls(initialPolls)
-  }, [initialPolls])
+    return () => { mounted = false }
+  }, [])
 
   async function refreshPolls() {
     const fresh = await getPollsWithOptions()
@@ -318,7 +301,6 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
   function handleSelect(pollId: number, optionId: number) {
     if (votedMap[pollId] !== undefined) return
     setSelectedMap((prev) => ({ ...prev, [pollId]: optionId }))
-    // Clear validation error when user selects an option
     setVoteErrors((prev) => {
       const next = { ...prev }
       delete next[pollId]
@@ -328,16 +310,10 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
 
   function handleVote(pollId: number) {
     const optionId = selectedMap[pollId]
-
-    // Validation: must have selected an option
     if (optionId === undefined) {
-      setVoteErrors((prev) => ({
-        ...prev,
-        [pollId]: 'Pilih salah satu opsi sebelum mengirim suara.',
-      }))
+      setVoteErrors((prev) => ({ ...prev, [pollId]: 'Pilih salah satu opsi sebelum mengirim suara.' }))
       return
     }
-
     if (votedMap[pollId] !== undefined) return
 
     setVoteStatus((prev) => ({ ...prev, [pollId]: 'voting' }))
@@ -350,7 +326,6 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
 
         await castVote(optionId, { fingerprint, voterToken, ip })
 
-        // Optimistic update
         setPolls((prev) =>
           prev.map(p => p.id == pollId ? {
             ...p,
@@ -366,10 +341,7 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
         await refreshPolls()
       } catch (err: any) {
         if (err?.message === 'ALREADY_VOTED' || err?.message?.includes('ALREADY_VOTED')) {
-          setVoteErrors((prev) => ({
-            ...prev,
-            [pollId]: 'Kamu sudah pernah memilih di polling ini.',
-          }))
+          setVoteErrors((prev) => ({ ...prev, [pollId]: 'Kamu sudah pernah memilih di polling ini.' }))
           const nextMap = { ...votedMap, [pollId]: -1 }
           setVotedMap(nextMap)
           localStorage.setItem('voted_map', JSON.stringify(nextMap))
@@ -385,7 +357,7 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
     <section aria-label="Daftar Polling" className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {isRefreshing ? (
+          {isLoading || isRefreshing ? (
             <span className="inline-flex items-center gap-1.5">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Memuat...
@@ -394,13 +366,7 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
             `${polls.length} polling aktif`
           )}
         </p>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="text-xs h-7 px-2"
-        >
+        <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={isLoading || isRefreshing} className="text-xs h-7 px-2">
           Muat Ulang
         </Button>
       </div>
@@ -412,8 +378,8 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
         </div>
       )}
 
-      {isRefreshing && polls.length === 0 ? (
-        <LoadingSkeleton count={2} tall />
+      {isLoading ? (
+        <CardListSkeleton count={2} tall />
       ) : polls.length === 0 ? (
         <EmptyState
           icon={<BarChart2 className="h-10 w-10 opacity-30" />}
@@ -451,15 +417,10 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
                       </div>
                     )}
                   </CardHeader>
-
                   <CardContent className="flex flex-col gap-3">
-                    {/* Options */}
                     <ul className="flex flex-col gap-2" role="radiogroup" aria-label={poll.pertanyaan}>
                       {poll.opsi.map((opsi) => {
-                        const pct =
-                          totalSuara > 0
-                            ? Math.round((opsi.suara / totalSuara) * 100)
-                            : 0
+                        const pct = totalSuara > 0 ? Math.round((opsi.suara / totalSuara) * 100) : 0
                         const isThisVoted = votedOpsiId === opsi.id
                         const isThisSelected = selectedOpsiId === opsi.id
                         const isLeading = hasVotes && opsi.suara === maxSuara
@@ -467,20 +428,11 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
                         return (
                           <li key={opsi.id}>
                             {sudahVote ? (
-                              // ── Result view ───────────────────────────────
                               <div className="flex flex-col gap-1">
                                 <div className="flex items-center justify-between text-sm">
                                   <div className="flex items-center gap-1.5">
-                                    {isThisVoted && (
-                                      <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />
-                                    )}
-                                    <span
-                                      className={
-                                        isLeading || isThisVoted
-                                          ? 'font-bold text-foreground'
-                                          : 'text-foreground'
-                                      }
-                                    >
+                                    {isThisVoted && <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />}
+                                    <span className={isLeading || isThisVoted ? 'font-bold text-foreground' : 'text-foreground'}>
                                       {opsi.teks}
                                     </span>
                                   </div>
@@ -488,49 +440,22 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
                                     {opsi.suara} suara ({pct}%)
                                   </span>
                                 </div>
-                                <div
-                                  className="h-2 w-full rounded-full bg-muted overflow-hidden"
-                                  role="progressbar"
-                                  aria-valuenow={pct}
-                                  aria-valuemin={0}
-                                  aria-valuemax={100}
-                                  aria-label={`${opsi.teks}: ${pct}%`}
-                                >
-                                  <div
-                                    className={`h-full rounded-full transition-all duration-500 ${isThisVoted
-                                      ? 'bg-primary'
-                                      : isLeading
-                                        ? 'bg-muted-foreground'
-                                        : 'bg-muted-foreground/40'
-                                      }`}
-                                    style={{ width: `${pct}%` }}
-                                  />
+                                <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                                  <div className={`h-full rounded-full transition-all duration-500 ${isThisVoted ? 'bg-primary' : isLeading ? 'bg-muted-foreground' : 'bg-muted-foreground/40'}`} style={{ width: `${pct}%` }} />
                                 </div>
                               </div>
                             ) : (
-                              // ── Vote selection view ───────────────────────
                               <button
                                 type="button"
                                 role="radio"
                                 aria-checked={isThisSelected}
                                 onClick={() => handleSelect(poll.id, opsi.id)}
                                 disabled={isVoting}
-                                className={`w-full rounded-md border px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60 ${isThisSelected
-                                  ? 'border-primary bg-primary/8 text-foreground font-medium'
-                                  : 'border-border bg-card text-foreground hover:bg-accent hover:text-accent-foreground'
-                                  }`}
+                                className={`w-full rounded-md border px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60 ${isThisSelected ? 'border-primary bg-primary/8 text-foreground font-medium' : 'border-border bg-card text-foreground hover:bg-accent hover:text-accent-foreground'}`}
                               >
                                 <span className="flex items-center gap-2">
-                                  <span
-                                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${isThisSelected
-                                      ? 'border-primary bg-primary'
-                                      : 'border-muted-foreground/40'
-                                      }`}
-                                    aria-hidden="true"
-                                  >
-                                    {isThisSelected && (
-                                      <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
-                                    )}
+                                  <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${isThisSelected ? 'border-primary bg-primary' : 'border-muted-foreground/40'}`}>
+                                    {isThisSelected && <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
                                   </span>
                                   {opsi.teks}
                                 </span>
@@ -540,37 +465,26 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
                         )
                       })}
                     </ul>
-
-                    {/* Validation error */}
                     {validationError && !sudahVote && (
                       <p className="flex items-center gap-1.5 text-xs text-destructive">
                         <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                         {validationError}
                       </p>
                     )}
-
-                    {/* Vote error */}
                     {hasVoteError && !sudahVote && (
                       <p className="flex items-center gap-1.5 text-xs text-destructive">
                         <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                         Gagal mengirim suara. Silakan coba lagi.
                       </p>
                     )}
-
-                    {/* Submit button */}
                     {!sudahVote && (
                       <div className="flex items-center justify-between gap-3 pt-1">
-                        <span className="text-xs text-muted-foreground">
-                          {totalSuara} suara masuk
-                        </span>
+                        <span className="text-xs text-muted-foreground">{totalSuara} suara masuk</span>
                         <Button
                           size="sm"
                           onClick={() => {
                             if (selectedMap[poll.id] === undefined) {
-                              setVoteErrors((prev) => ({
-                                ...prev,
-                                [poll.id]: 'Pilih salah satu opsi sebelum mengirim suara.',
-                              }))
+                              setVoteErrors((prev) => ({ ...prev, [poll.id]: 'Pilih salah satu opsi sebelum mengirim suara.' }))
                               return
                             }
                             setConfirmPollId(poll.id)
@@ -578,23 +492,12 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
                           disabled={isVoting || isRefreshing}
                           className="gap-1.5"
                         >
-                          {isVoting ? (
-                            <>
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              Mengirim...
-                            </>
-                          ) : (
-                            'Kirim Suara'
-                          )}
+                          {isVoting ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Mengirim...</> : 'Kirim Suara'}
                         </Button>
                       </div>
                     )}
-
-                    {/* Post-vote total */}
                     {sudahVote && (
-                      <p className="text-xs text-muted-foreground pt-1 border-t border-border">
-                        Total {totalSuara} suara masuk
-                      </p>
+                      <p className="text-xs text-muted-foreground pt-1 border-t border-border">Total {totalSuara} suara masuk</p>
                     )}
                   </CardContent>
                 </Card>
@@ -604,11 +507,7 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
         </ul>
       )}
 
-      {/* Confirmation Dialog */}
-      <Dialog
-        open={confirmPollId !== null}
-        onOpenChange={(open) => !open && setConfirmPollId(null)}
-      >
+      <Dialog open={confirmPollId !== null} onOpenChange={(open) => !open && setConfirmPollId(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Konfirmasi Pilihan</DialogTitle>
@@ -617,24 +516,8 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2 mt-4">
-            <Button
-              variant="outline"
-              onClick={() => setConfirmPollId(null)}
-              disabled={isVotingTransition}
-            >
-              Batal
-            </Button>
-            <Button
-              onClick={() => {
-                if (confirmPollId !== null) {
-                  handleVote(confirmPollId)
-                  setConfirmPollId(null)
-                }
-              }}
-              disabled={isVotingTransition}
-            >
-              Kirim Suara
-            </Button>
+            <Button variant="outline" onClick={() => setConfirmPollId(null)} disabled={isVotingTransition}>Batal</Button>
+            <Button onClick={() => { if (confirmPollId !== null) { handleVote(confirmPollId); setConfirmPollId(null) } }} disabled={isVotingTransition}>Kirim Suara</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -644,50 +527,25 @@ function PollingPanel({ initialPolls }: { initialPolls: PollWithOptions[] }) {
 
 // ── Surat Pengantar Panel ─────────────────────────────────────────────────────
 
-const emptyRequestForm = {
-  penerima: '',
-  nik: '',
-  phone: '',
-  nomorRumah: '',
-  tujuan: '',
-  perihal: '',
-}
-
-const statusVariant: Record<string, 'default' | 'secondary' | 'destructive'> = {
-  menunggu: 'secondary',
-  selesai: 'default',
-  ditolak: 'destructive',
-}
-
-const statusLabel: Record<string, string> = {
-  menunggu: 'Menunggu',
-  selesai: 'Selesai',
-  ditolak: 'Ditolak',
-}
+const emptyRequestForm = { penerima: '', nik: '', phone: '', nomorRumah: '', tujuan: '', perihal: '' }
+const statusVariant: Record<string, 'default' | 'secondary' | 'destructive'> = { menunggu: 'secondary', selesai: 'default', ditolak: 'destructive' }
+const statusLabel: Record<string, string> = { menunggu: 'Menunggu', selesai: 'Selesai', ditolak: 'Ditolak' }
 
 function SuratPengantarPanel() {
-  // ── Request form state ──────────────────────────────────────────────────────
   const [form, setForm] = useState(emptyRequestForm)
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
-  const [submitStatus, setSubmitStatus] = useState<
-    'idle' | 'submitting' | 'success' | 'error'
-  >('idle')
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
   const [submittedNomor, setSubmittedNomor] = useState<string | null>(null)
-
-  // ── Search state ────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SuratPengantar[] | null>(null)
   const [isSearching, startSearchTransition] = useTransition()
   const [searchError, setSearchError] = useState<string | null>(null)
-
   const [isSubmitting, startSubmitTransition] = useTransition()
 
-  // ── Form helpers ────────────────────────────────────────────────────────────
   function field(key: keyof typeof emptyRequestForm) {
     return {
       value: form[key],
-      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-        setForm((f) => ({ ...f, [key]: e.target.value })),
+      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [key]: e.target.value })),
     }
   }
 
@@ -697,8 +555,7 @@ function SuratPengantarPanel() {
     if (!form.tujuan.trim()) e.tujuan = 'Tujuan surat wajib diisi.'
     if (!form.perihal.trim()) e.perihal = 'Perihal wajib diisi.'
     if (!form.nik.trim() && !form.phone.trim() && !form.nomorRumah.trim()) {
-      e.identity =
-        'Isi setidaknya satu dari: NIK, nomor HP, atau nomor rumah agar surat dapat ditemukan nanti.'
+      e.identity = 'Isi setidaknya satu dari: NIK, nomor HP, atau nomor rumah agar surat dapat ditemukan nanti.'
     }
     return e
   }
@@ -729,7 +586,6 @@ function SuratPengantarPanel() {
     setFormErrors({})
   }
 
-  // ── Search helpers ──────────────────────────────────────────────────────────
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()
     if (!searchQuery.trim()) {
@@ -747,22 +603,16 @@ function SuratPengantarPanel() {
     })
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <section aria-label="Surat Pengantar" className="flex flex-col gap-4">
-
-      {/* ── Request Form Card ─────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <Send className="h-4 w-4 text-primary" />
             <CardTitle className="text-base">Ajukan Surat Pengantar</CardTitle>
           </div>
-          <CardDescription>
-            Isi data di bawah ini untuk mengajukan surat pengantar ke RT/RW.
-          </CardDescription>
+          <CardDescription>Isi data di bawah ini untuk mengajukan surat pengantar ke RT/RW.</CardDescription>
         </CardHeader>
-
         <CardContent>
           {submitStatus === 'success' ? (
             <div className="flex flex-col items-center gap-4 py-6 text-center">
@@ -771,19 +621,11 @@ function SuratPengantarPanel() {
               </div>
               <div className="flex flex-col gap-1">
                 <p className="font-semibold text-foreground">Permohonan Diterima!</p>
-                <p className="text-sm text-muted-foreground">
-                  Nomor surat Anda:
-                </p>
-                <p className="font-mono text-sm font-semibold text-primary">
-                  {submittedNomor}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Simpan nomor ini atau catat NIK/HP Anda untuk melacak status surat.
-                </p>
+                <p className="text-sm text-muted-foreground">Nomor surat Anda:</p>
+                <p className="font-mono text-sm font-semibold text-primary">{submittedNomor}</p>
+                <p className="text-xs text-muted-foreground mt-1">Simpan nomor ini atau catat NIK/HP Anda untuk melacak status surat.</p>
               </div>
-              <Button size="sm" variant="outline" onClick={handleNewRequest}>
-                Ajukan Surat Baru
-              </Button>
+              <Button size="sm" variant="outline" onClick={handleNewRequest}>Ajukan Surat Baru</Button>
             </div>
           ) : (
             <div className="flex flex-col gap-4">
@@ -793,182 +635,88 @@ function SuratPengantarPanel() {
                   Terjadi kesalahan. Silakan coba lagi.
                 </div>
               )}
-
-              {/* Identity error */}
               {formErrors.identity && (
                 <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   {formErrors.identity}
                 </div>
               )}
-
-              {/* Nama */}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="sp-penerima">Nama Lengkap</Label>
-                <Input
-                  id="sp-penerima"
-                  placeholder="Nama sesuai KTP"
-                  disabled={isSubmitting}
-                  {...field('penerima')}
-                />
-                {formErrors.penerima && (
-                  <p className="text-xs text-destructive">{formErrors.penerima}</p>
-                )}
+                <Input id="sp-penerima" placeholder="Nama sesuai KTP" disabled={isSubmitting} {...field('penerima')} />
+                {formErrors.penerima && <p className="text-xs text-destructive">{formErrors.penerima}</p>}
               </div>
-
-              {/* Identity row */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="sp-nik">NIK</Label>
-                  <Input
-                    id="sp-nik"
-                    placeholder="16 digit NIK"
-                    inputMode="numeric"
-                    maxLength={16}
-                    disabled={isSubmitting}
-                    {...field('nik')}
-                  />
+                  <Input id="sp-nik" placeholder="16 digit NIK" inputMode="numeric" maxLength={16} disabled={isSubmitting} {...field('nik')} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="sp-phone">Nomor HP</Label>
-                  <Input
-                    id="sp-phone"
-                    placeholder="cth. 08123456789"
-                    inputMode="tel"
-                    disabled={isSubmitting}
-                    {...field('phone')}
-                  />
+                  <Input id="sp-phone" placeholder="cth. 08123456789" inputMode="tel" disabled={isSubmitting} {...field('phone')} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="sp-rumah">Nomor Rumah</Label>
-                  <Input
-                    id="sp-rumah"
-                    placeholder="cth. 12A"
-                    disabled={isSubmitting}
-                    {...field('nomorRumah')}
-                  />
+                  <Input id="sp-rumah" placeholder="cth. 12A" disabled={isSubmitting} {...field('nomorRumah')} />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground -mt-1">
-                Isi minimal satu kolom di atas agar surat dapat ditemukan saat pencarian.
-              </p>
-
-              {/* Tujuan */}
+              <p className="text-xs text-muted-foreground -mt-1">Isi minimal satu kolom di atas agar surat dapat ditemukan saat pencarian.</p>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="sp-tujuan">Tujuan Surat</Label>
-                <Input
-                  id="sp-tujuan"
-                  placeholder="cth. Kelurahan Sukamaju"
-                  disabled={isSubmitting}
-                  {...field('tujuan')}
-                />
-                {formErrors.tujuan && (
-                  <p className="text-xs text-destructive">{formErrors.tujuan}</p>
-                )}
+                <Input id="sp-tujuan" placeholder="cth. Kelurahan Sukamaju" disabled={isSubmitting} {...field('tujuan')} />
+                {formErrors.tujuan && <p className="text-xs text-destructive">{formErrors.tujuan}</p>}
               </div>
-
-              {/* Perihal */}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="sp-perihal">Perihal / Keperluan</Label>
-                <Textarea
-                  id="sp-perihal"
-                  placeholder="cth. Keterangan Domisili untuk pembuatan rekening bank"
-                  rows={2}
-                  disabled={isSubmitting}
-                  {...field('perihal')}
-                />
-                {formErrors.perihal && (
-                  <p className="text-xs text-destructive">{formErrors.perihal}</p>
-                )}
+                <Textarea id="sp-perihal" placeholder="cth. Keterangan Domisili untuk pembuatan rekening bank" rows={2} disabled={isSubmitting} {...field('perihal')} />
+                {formErrors.perihal && <p className="text-xs text-destructive">{formErrors.perihal}</p>}
               </div>
-
-              <Button
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="w-full gap-2"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Mengirim...
-                  </>
-                ) : (
-                  <>
-                    <Send className="h-4 w-4" />
-                    Kirim Permohonan
-                  </>
-                )}
+              <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full gap-2">
+                {isSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" />Mengirim...</> : <><Send className="h-4 w-4" />Kirim Permohonan</>}
               </Button>
             </div>
           )}
         </CardContent>
       </Card>
-
-      {/* ── Search Card ───────────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <Search className="h-4 w-4 text-primary" />
             <CardTitle className="text-base">Cari Status Surat</CardTitle>
           </div>
-          <CardDescription>
-            Cari surat Anda menggunakan NIK, nomor HP, atau nomor rumah.
-          </CardDescription>
+          <CardDescription>Cari surat Anda menggunakan NIK, nomor HP, atau nomor rumah.</CardDescription>
         </CardHeader>
-
         <CardContent className="flex flex-col gap-4">
           <form onSubmit={handleSearch} className="flex gap-2">
-            <Input
-              placeholder="Masukkan NIK / No. HP / No. Rumah..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              disabled={isSearching}
-              className="flex-1"
-              aria-label="Kata kunci pencarian surat"
-            />
+            <Input placeholder="Masukkan NIK / No. HP / No. Rumah..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} disabled={isSearching} className="flex-1" aria-label="Kata kunci pencarian surat" />
             <Button type="submit" disabled={isSearching} size="sm" className="gap-1.5 shrink-0">
-              {isSearching ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Search className="h-4 w-4" />
-              )}
+              {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               <span className="sr-only sm:not-sr-only">Cari</span>
             </Button>
           </form>
-
           {searchError && (
             <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               <AlertCircle className="h-4 w-4 shrink-0" />
               {searchError}
             </div>
           )}
-
           {isSearching && (
             <div className="flex flex-col gap-2">
-              {[1, 2].map((i) => (
-                <Skeleton key={i} className="h-16 w-full rounded-lg" />
-              ))}
+              {[1, 2].map((i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
             </div>
           )}
-
           {!isSearching && searchResults !== null && (
             searchResults.length === 0 ? (
               <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border py-10 text-center">
                 <FileText className="h-8 w-8 text-muted-foreground opacity-40" />
                 <p className="text-sm font-medium text-foreground">Tidak ditemukan</p>
-                <p className="text-xs text-muted-foreground">
-                  Tidak ada surat yang cocok dengan kata kunci tersebut.
-                </p>
+                <p className="text-xs text-muted-foreground">Tidak ada surat yang cocok dengan kata kunci tersebut.</p>
               </div>
             ) : (
               <div className="flex flex-col gap-1">
-                <p className="text-xs text-muted-foreground mb-1">
-                  {searchResults.length} surat ditemukan
-                </p>
+                <p className="text-xs text-muted-foreground mb-1">{searchResults.length} surat ditemukan</p>
                 <ul className="flex flex-col gap-2">
-                  {searchResults.map((surat) => (
-                    <SuratResultItem key={surat.id} surat={surat} />
-                  ))}
+                  {searchResults.map((surat) => <SuratResultItem key={surat.id} surat={surat} />)}
                 </ul>
               </div>
             )
@@ -978,8 +726,6 @@ function SuratPengantarPanel() {
     </section>
   )
 }
-
-// ── Surat result item (isolated so it can hold its own loading state) ─────────
 
 function SuratResultItem({ surat }: { surat: SuratPengantar }) {
   const isSelesai = surat.status === 'selesai'
@@ -998,16 +744,10 @@ function SuratResultItem({ surat }: { surat: SuratPengantar }) {
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 px-4 py-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <span className="font-mono text-xs text-muted-foreground">
-          {surat.nomorSurat}
-        </span>
-        <Badge variant={statusVariant[surat.status ?? 'menunggu']}>
-          {statusLabel[surat.status ?? 'menunggu']}
-        </Badge>
+        <span className="font-mono text-xs text-muted-foreground">{surat.nomorSurat}</span>
+        <Badge variant={statusVariant[surat.status ?? 'menunggu']}>{statusLabel[surat.status ?? 'menunggu']}</Badge>
       </div>
-      <p className="text-sm font-medium text-foreground leading-snug">
-        {surat.penerima}
-      </p>
+      <p className="text-sm font-medium text-foreground leading-snug">{surat.penerima}</p>
       <p className="text-xs text-muted-foreground">{surat.perihal}</p>
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-xs text-muted-foreground" suppressHydrationWarning>
@@ -1015,18 +755,8 @@ function SuratResultItem({ surat }: { surat: SuratPengantar }) {
           {surat.tujuan ? ` · ${surat.tujuan}` : ''}
         </p>
         {isSelesai && (
-          <button
-            type="button"
-            onClick={handleCetak}
-            disabled={loadingCetak}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-            aria-label={`Cetak surat ${surat.nomorSurat}`}
-          >
-            {loadingCetak ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Printer className="h-3.5 w-3.5" />
-            )}
+          <button type="button" onClick={handleCetak} disabled={loadingCetak} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50" aria-label={`Cetak surat ${surat.nomorSurat}`}>
+            {loadingCetak ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
             Cetak Surat
           </button>
         )}
@@ -1035,35 +765,7 @@ function SuratResultItem({ surat }: { surat: SuratPengantar }) {
   )
 }
 
-// ── Shared sub-components ─────────────────────────────────────────────────────
-
-function LoadingSkeleton({ count, tall }: { count: number; tall?: boolean }) {
-  return (
-    <div className="flex flex-col gap-3">
-      {Array.from({ length: count }).map((_, i) => (
-        <Card key={i}>
-          <CardHeader className="pb-2 gap-2">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-5 w-3/4" />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            <Skeleton className={tall ? 'h-24 w-full' : 'h-14 w-full'} />
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  )
-}
-
-function EmptyState({
-  icon,
-  message,
-  sub,
-}: {
-  icon: React.ReactNode
-  message: string
-  sub: string
-}) {
+function EmptyState({ icon, message, sub }: { icon: React.ReactNode; message: string; sub: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
       <span className="text-muted-foreground">{icon}</span>
@@ -1077,23 +779,66 @@ function EmptyState({
 
 // ── Statistik Panel ───────────────────────────────────────────────────────────
 
-function StatistikPanel(props: Props) {
+function StatistikPanel() {
+  const [data, setData] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    let mounted = true
+    Promise.all([
+      getResidentStats(),
+      getFamilyStats(),
+      getAgeDistribution(),
+      getReligionComposition(),
+      getOccupationBreakdown(),
+    ]).then(([rs, fs, ad, rc, ob]) => {
+      if (mounted) {
+        setData({ residentStats: rs, familyStats: fs, ageDistribution: ad, religionComposition: rc, occupationBreakdown: ob })
+        setIsLoading(false)
+      }
+    }).catch(() => {
+      if (mounted) setIsLoading(false)
+    })
+    return () => { mounted = false }
+  }, [])
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="pb-2"><Skeleton className="h-4 w-24" /></CardHeader>
+              <CardContent><Skeleton className="h-8 w-16" /></CardContent>
+            </Card>
+          ))}
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card><CardContent className="pt-6"><Skeleton className="h-[250px] w-full rounded-full max-w-[250px] mx-auto" /></CardContent></Card>
+          <Card><CardContent className="pt-6"><Skeleton className="h-[250px] w-full" /></CardContent></Card>
+        </div>
+      </div>
+    )
+  }
+
+  if (!data) return null
+
   return (
     <section aria-label="Statistik RT" className="flex flex-col gap-6">
       <StatsCards
-        totalResidents={props.residentStats.total}
-        totalFamilies={props.familyStats.total}
-        maleCount={props.residentStats.male}
-        femaleCount={props.residentStats.female}
-        newThisMonth={props.residentStats.newThisMonth}
+        totalResidents={data.residentStats.total}
+        totalFamilies={data.familyStats.total}
+        maleCount={data.residentStats.male}
+        femaleCount={data.residentStats.female}
+        newThisMonth={data.residentStats.newThisMonth}
       />
       <div className="grid gap-4 md:grid-cols-2">
-        <GenderChart male={props.residentStats.male} female={props.residentStats.female} />
-        <AgeChart data={props.ageDistribution} />
+        <GenderChart male={data.residentStats.male} female={data.residentStats.female} />
+        <AgeChart data={data.ageDistribution} />
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        <ReligionChart data={props.religionComposition} />
-        <OccupationChart data={props.occupationBreakdown} />
+        <ReligionChart data={data.religionComposition} />
+        <OccupationChart data={data.occupationBreakdown} />
       </div>
     </section>
   )
@@ -1101,13 +846,53 @@ function StatistikPanel(props: Props) {
 
 // ── Kas Iuran Panel ───────────────────────────────────────────────────────────
 
-function KasIuranPanel({
-  kasIuranList,
-  kasIuranSummary,
-}: {
-  kasIuranList: KasIuran[]
-  kasIuranSummary: { totalMasuk: number; totalKeluar: number; saldo: number }
-}) {
+function KasIuranPanel() {
+  const [data, setData] = useState<{ list: KasIuran[], summary: any } | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    let mounted = true
+    Promise.all([
+      getKasIuranList(),
+      getKasIuranSummary()
+    ]).then(([list, summary]) => {
+      if (mounted) {
+        setData({ list, summary })
+        setIsLoading(false)
+      }
+    }).catch(() => {
+      if (mounted) setIsLoading(false)
+    })
+    return () => { mounted = false }
+  }, [])
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="grid gap-4 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="pb-2"><Skeleton className="h-4 w-24" /></CardHeader>
+              <CardContent><Skeleton className="h-8 w-32" /></CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardHeader><Skeleton className="h-5 w-40" /></CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (!data) return null
+
   return (
     <section aria-label="Laporan Kas Iuran" className="flex flex-col gap-6">
       <div className="grid gap-4 sm:grid-cols-3">
@@ -1118,7 +903,7 @@ function KasIuranPanel({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              Rp {kasIuranSummary.saldo.toLocaleString('id-ID')}
+              Rp {data.summary.saldo.toLocaleString('id-ID')}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Saldo saat ini</p>
           </CardContent>
@@ -1130,7 +915,7 @@ function KasIuranPanel({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              Rp {kasIuranSummary.totalMasuk.toLocaleString('id-ID')}
+              Rp {data.summary.totalMasuk.toLocaleString('id-ID')}
             </div>
           </CardContent>
         </Card>
@@ -1141,7 +926,7 @@ function KasIuranPanel({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              Rp {kasIuranSummary.totalKeluar.toLocaleString('id-ID')}
+              Rp {data.summary.totalKeluar.toLocaleString('id-ID')}
             </div>
           </CardContent>
         </Card>
@@ -1153,14 +938,14 @@ function KasIuranPanel({
           <CardDescription>Catatan aliran dana RT terkini.</CardDescription>
         </CardHeader>
         <CardContent>
-          {kasIuranList.length === 0 ? (
+          {data.list.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-10 text-muted-foreground">
               <Wallet className="h-8 w-8 opacity-30" />
               <p className="text-sm">Belum ada riwayat transaksi.</p>
             </div>
           ) : (
             <div className="flex flex-col divide-y divide-border border rounded-lg overflow-hidden">
-              {kasIuranList.map((kas) => (
+              {data.list.map((kas) => (
                 <div key={kas.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4 bg-card hover:bg-muted/30 transition-colors">
                   <div className="flex flex-col gap-1">
                     <p className="text-sm font-medium leading-none">{kas.nama}</p>

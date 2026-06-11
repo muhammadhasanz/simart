@@ -1,14 +1,14 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { encryptCetakId } from '@/lib/cetak-token'
+import { encryptCetakId, decryptCetakToken } from '@/lib/cetak-token'
 import { sheetsGet, sheetsPost } from '@/lib/db/sheets-driver'
 import { db, driver } from '@/lib/db'
 import { suratPengantar } from '@/lib/db/schema'
 import { eq, or, ilike, desc } from 'drizzle-orm'
 
 export async function getSuratPengantarList() {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const data = await sheetsGet('getSuratList')
     // Sort descending by tanggal/createdAt
     return data.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -32,7 +32,7 @@ export async function createSuratPengantar(
   }
 ) {
   let result
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     result = await sheetsPost('createSurat', { data })
   } else {
     // Generate nomor surat if not provided
@@ -61,7 +61,7 @@ export async function updateSuratPengantar(
   data: any
 ) {
   let result
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     result = await sheetsPost('updateSurat', { data: { id, ...data } })
   } else {
     const [updated] = await db.update(suratPengantar).set(data).where(eq(suratPengantar.id, Number(id))).returning()
@@ -72,7 +72,7 @@ export async function updateSuratPengantar(
 }
 
 export async function deleteSuratPengantar(id: number | string) {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     await sheetsPost('deleteSurat', { id })
   } else {
     await db.delete(suratPengantar).where(eq(suratPengantar.id, Number(id)))
@@ -81,7 +81,7 @@ export async function deleteSuratPengantar(id: number | string) {
 }
 
 export async function getSuratPengantarById(id: number | string) {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const result = await sheetsGet('getSuratById', id.toString())
     return result
   }
@@ -101,6 +101,21 @@ export async function getCetakToken(id: number | string): Promise<string> {
 }
 
 /**
+ * Validates a print token and returns the SuratPengantar if it is valid and ready to print.
+ */
+export async function getSuratByToken(token: string) {
+  const id = decryptCetakToken(token)
+  if (!id) return { error: 'not_found' }
+  
+  const surat = await getSuratPengantarById(id)
+  if (!surat) return { error: 'not_found' }
+  
+  if (surat.status !== 'selesai') return { error: 'not_ready' }
+  
+  return { surat }
+}
+
+/**
  * Submit a surat pengantar request from the public portal.
  * Generates a sequential nomor surat automatically.
  */
@@ -113,7 +128,7 @@ export async function requestSuratPengantar(data: {
   perihal: string
 }) {
   let result
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     result = await sheetsPost('createSurat', { data })
   } else {
     // Generate nomor surat
@@ -142,7 +157,7 @@ export async function searchSuratPengantar(query: string) {
   const q = query.trim()
   if (!q) return []
   
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const data = await sheetsGet('searchSurat', q)
     return data.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   }

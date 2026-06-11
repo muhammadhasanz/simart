@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache'
 import { sheetsGet, sheetsPost } from '@/lib/db/sheets-driver'
 
 export async function getKasIuranList() {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const data = await sheetsGet('getKasIuran')
     return data
       .map((d: any) => ({ ...d, nominal: Number(d.nominal) }))
@@ -17,7 +17,7 @@ export async function getKasIuranList() {
 }
 
 export async function getKasIuranSummary() {
-  const rows = driver === 'gas' 
+  const rows = driver === 'spreadsheet' 
     ? (await sheetsGet('getKasIuran')).map((d: any) => ({ ...d, nominal: Number(d.nominal) }))
     : await db.select().from(kasIuran)
   let totalMasuk = 0
@@ -31,7 +31,7 @@ export async function getKasIuranSummary() {
 
 export async function createKasIuran(data: Omit<NewKasIuran, 'id' | 'createdAt' | 'updatedAt'>) {
   let result
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     result = await sheetsPost('createKasIuran', { data })
   } else {
     const res = await db.insert(kasIuran).values(data).returning()
@@ -46,7 +46,7 @@ export async function updateKasIuran(
   data: Partial<Omit<NewKasIuran, 'id' | 'createdAt' | 'updatedAt'>>
 ) {
   let result
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     result = await sheetsPost('updateKasIuran', { data: { id, ...data } })
   } else {
     const res = await db
@@ -61,7 +61,7 @@ export async function updateKasIuran(
 }
 
 export async function deleteKasIuran(id: number | string) {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     await sheetsPost('deleteKasIuran', { id })
   } else {
     await db.delete(kasIuran).where(eq(kasIuran.id, Number(id)))

@@ -9,7 +9,7 @@ import { eq, or, and, desc } from 'drizzle-orm'
 // ── Pengumuman ────────────────────────────────────────────────────────────────
 
 export async function getPengumumanList() {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const data = await sheetsGet('getPengumuman')
     return data.sort((a: any, b: any) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime())
   }
@@ -22,7 +22,7 @@ export async function createPengumuman(
   data: { judul: string; isi: string; tanggal: string; kategori: string }
 ) {
   let result
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     result = await sheetsPost('createPengumuman', { data })
   } else {
     const inserted = await db.insert(pengumuman).values(data).returning()
@@ -38,7 +38,7 @@ export async function updatePengumuman(
   data: { judul?: string; isi?: string; tanggal?: string; kategori?: string }
 ) {
   let result
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     result = await sheetsPost('updatePengumuman', { data: { id, ...data } })
   } else {
     const updated = await db.update(pengumuman).set(data).where(eq(pengumuman.id, Number(id))).returning()
@@ -50,7 +50,7 @@ export async function updatePengumuman(
 }
 
 export async function deletePengumuman(id: number | string) {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     await sheetsPost('deletePengumuman', { id })
   } else {
     await db.delete(pengumuman).where(eq(pengumuman.id, Number(id)))
@@ -69,7 +69,7 @@ export type PollWithOptions = {
 }
 
 export async function getPollsWithOptions(): Promise<PollWithOptions[]> {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const data = await sheetsGet('getPolls')
     return data.sort((a: any, b: any) => {
       if (!a.tanggal) return 1
@@ -93,7 +93,7 @@ export async function createPoll(data: {
   opsi: string[]
 }) {
   let result
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     result = await sheetsPost('createPoll', { data })
   } else {
     const [insertedPoll] = await db.insert(polls).values({
@@ -121,7 +121,7 @@ export async function castVote(
   optionId: number,
   identity: { fingerprint: string; voterToken: string; ip: string }
 ) {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     // We send optionId AND identity to GAS
     await sheetsPost('castVote', { optionId, identity })
   } else {
@@ -173,7 +173,7 @@ export async function castVote(
 }
 
 export async function deletePoll(id: number | string) {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     await sheetsPost('deletePoll', { id })
   } else {
     // Assuming cascading delete is set up, or Drizzle handles it

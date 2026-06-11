@@ -16,7 +16,7 @@ export async function getResidents(params?: {
 }) {
   const { search, status, gender, limit = 10, offset = 0 } = params || {}
 
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     let allRes = await sheetsGet('getResidents')
     const allFams = await sheetsGet('getFamilies')
 
@@ -98,7 +98,7 @@ export async function getResidents(params?: {
 
 // Get single resident by ID
 export async function getResidentById(id: number | string) {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const allRes = await sheetsGet('getResidents')
     const res = allRes.find((r: any) => r.id == id)
     if (!res) return null
@@ -133,7 +133,7 @@ export async function getResidentById(id: number | string) {
 // Create new resident
 export async function createResident(data: NewResident) {
   let result
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     result = await sheetsPost('createResident', { data })
   } else {
     const res = await db.insert(residents).values(data).returning()
@@ -147,7 +147,7 @@ export async function createResident(data: NewResident) {
 // Update resident
 export async function updateResident(id: number | string, data: Partial<NewResident>) {
   let result
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     result = await sheetsPost('updateResident', { data: { id, ...data } })
   } else {
     const res = await db
@@ -165,7 +165,7 @@ export async function updateResident(id: number | string, data: Partial<NewResid
 
 // Delete resident
 export async function deleteResident(id: number | string) {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     await sheetsPost('deleteResident', { id })
   } else {
     await db.delete(residents).where(eq(residents.id, Number(id)))
@@ -182,7 +182,7 @@ export async function getResidentStats() {
   const startOfMonthTime = startOfMonth.getTime()
   const startOfMonthStr = startOfMonth.toISOString()
 
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const allRes = await sheetsGet('getResidents')
     let total = 0, male = 0, female = 0, newThisMonth = 0
     
@@ -238,7 +238,7 @@ export async function getResidentStats() {
 // Get age distribution for charts
 export async function getAgeDistribution() {
   let rows
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const allRes = await sheetsGet('getResidents')
     rows = allRes
       .filter((r: any) => (r.residentStatus === 'active' || r.residentStatus === 'Aktif' || !r.residentStatus) && r.birthDate)
@@ -289,7 +289,7 @@ export async function getAgeDistribution() {
 
 // Get religion composition
 export async function getReligionComposition() {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const allRes = await sheetsGet('getResidents')
     const active = allRes.filter((r: any) => r.residentStatus === 'active' || r.residentStatus === 'Aktif' || !r.residentStatus)
     const counts: Record<string, number> = {}
@@ -314,7 +314,7 @@ export async function getReligionComposition() {
 
 // Get occupation breakdown
 export async function getOccupationBreakdown() {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const allRes = await sheetsGet('getResidents')
     const active = allRes.filter((r: any) => r.residentStatus === 'active' || r.residentStatus === 'Aktif' || !r.residentStatus)
     const counts: Record<string, number> = {}
@@ -344,7 +344,7 @@ export async function getOccupationBreakdown() {
 
 // Get recent residents
 export async function getRecentResidents(limit = 5) {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const allRes = await sheetsGet('getResidents')
     return allRes
       .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())

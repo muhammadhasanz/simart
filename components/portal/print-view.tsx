@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import type { SuratPengantar } from '@/lib/db/schema'
+import { getSuratByToken } from '@/app/actions/surat-pengantar'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -26,13 +28,107 @@ function terbilangBulan(d: string | null | undefined) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function PrintView({ surat }: { surat: SuratPengantar }) {
-  // Trigger the browser print dialog automatically on mount
+export function PrintView({ token }: { token: string }) {
+  const [surat, setSurat] = useState<SuratPengantar | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
   useEffect(() => {
-    // Small delay so the page is fully rendered before the dialog opens
-    const t = setTimeout(() => window.print(), 400)
-    return () => clearTimeout(t)
-  }, [])
+    let mounted = true
+    getSuratByToken(token).then((res) => {
+      if (!mounted) return
+      if (res.error) {
+        setError(res.error)
+      } else if (res.surat) {
+        setSurat(res.surat as SuratPengantar)
+      }
+      setIsLoading(false)
+    }).catch(() => {
+      if (mounted) {
+        setError('not_found')
+        setIsLoading(false)
+      }
+    })
+    return () => { mounted = false }
+  }, [token])
+
+  // Trigger the browser print dialog automatically on mount when data is loaded
+  useEffect(() => {
+    if (!isLoading && !error && surat) {
+      const t = setTimeout(() => window.print(), 400)
+      return () => clearTimeout(t)
+    }
+  }, [isLoading, error, surat])
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center min-h-screen p-8 bg-gray-100">
+        <div className="w-full max-w-[794px] bg-white p-16 shadow-lg min-h-[1123px]">
+          {/* Header Skeleton */}
+          <div className="flex items-center gap-6 border-b-4 border-double border-gray-800 pb-4 mb-8">
+            <Skeleton className="h-20 w-20 rounded-full shrink-0" />
+            <div className="flex-1 flex flex-col items-center gap-2">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-6 w-72" />
+              <Skeleton className="h-3 w-96 mt-2" />
+            </div>
+          </div>
+          
+          {/* Title Skeleton */}
+          <div className="flex flex-col items-center mb-8 gap-2">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-3 w-32" />
+          </div>
+
+          {/* Content Skeleton */}
+          <div className="space-y-6">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            
+            <div className="pl-8 space-y-3 my-8">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex gap-4">
+                  <Skeleton className="h-4 w-32 shrink-0" />
+                  <Skeleton className="h-4 w-4 shrink-0" />
+                  <Skeleton className="h-4 w-64" />
+                </div>
+              ))}
+            </div>
+
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-4/5" />
+          </div>
+
+          {/* Signature Skeleton */}
+          <div className="flex justify-end mt-16">
+            <div className="flex flex-col items-center gap-2">
+              <Skeleton className="h-3 w-32 mb-2" />
+              <Skeleton className="h-4 w-24 mb-16" />
+              <Skeleton className="h-4 w-48" />
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !surat) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+        <div className="bg-white p-8 rounded-lg shadow-md max-w-md text-center">
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Dokumen Tidak Ditemukan</h2>
+          <p className="text-gray-500 mb-6">
+            {error === 'not_ready' 
+              ? 'Surat ini belum selesai diproses oleh admin.' 
+              : 'Tautan surat tidak valid atau surat telah dihapus.'}
+          </p>
+          <a href="/portal" className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90">
+            Kembali ke Portal
+          </a>
+        </div>
+      </div>
+    )
+  }
 
   const tanggalFormatted = formatDate(surat.tanggal)
   const bulan = terbilangBulan(surat.tanggal)

@@ -14,7 +14,7 @@ export async function getFamilies(params?: {
 }) {
   const { search, limit = 10, offset = 0 } = params || {}
 
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     let allFams = await sheetsGet('getFamilies')
     const allRes = await sheetsGet('getResidents')
     
@@ -81,7 +81,7 @@ export async function getFamilies(params?: {
 
 // Get single family by ID with members
 export async function getFamilyById(id: number | string) {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const allFams = await sheetsGet('getFamilies')
     const fam = allFams.find((f: any) => f.id == id)
     if (!fam) return null
@@ -117,7 +117,7 @@ export async function getFamilyById(id: number | string) {
 
 // Get all families for dropdown selection
 export async function getAllFamilies() {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const allFams = await sheetsGet('getFamilies')
     return allFams
       .map((f: any) => ({
@@ -141,7 +141,7 @@ export async function getAllFamilies() {
 // Create new family
 export async function createFamily(data: NewFamily) {
   let result
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     result = await sheetsPost('createFamily', { data })
   } else {
     const res = await db.insert(families).values(data).returning()
@@ -155,7 +155,7 @@ export async function createFamily(data: NewFamily) {
 // Update family
 export async function updateFamily(id: number | string, data: Partial<NewFamily>) {
   let result
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     result = await sheetsPost('updateFamily', { data: { id, ...data } })
   } else {
     const res = await db
@@ -173,7 +173,7 @@ export async function updateFamily(id: number | string, data: Partial<NewFamily>
 
 // Delete family
 export async function deleteFamily(id: number | string) {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     await sheetsPost('deleteFamily', { id })
   } else {
     await db.delete(families).where(eq(families.id, Number(id)))
@@ -184,7 +184,7 @@ export async function deleteFamily(id: number | string) {
 
 // Get family statistics
 export async function getFamilyStats() {
-  if (driver === 'gas') {
+  if (driver === 'spreadsheet') {
     const allFams = await sheetsGet('getFamilies')
     return { total: allFams.length }
   }

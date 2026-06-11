@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { createUser, deleteUser } from '@/app/actions/users'
+import { useState, useTransition, useEffect } from 'react'
+import { createUser, deleteUser, getUsers } from '@/app/actions/users'
+import { useSession } from '@/lib/auth-client'
+import { TableSkeleton } from '@/components/ui/table-skeleton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -32,12 +34,12 @@ type UserRow = {
   createdAt: Date | string | null
 }
 
-type Props = {
-  users: UserRow[]
-  currentUserId: string
-}
+export function UserTable() {
+  const { data: session } = useSession()
+  const currentUserId = session?.user?.id ?? ''
 
-export function UserTable({ users, currentUserId }: Props) {
+  const [users, setUsers] = useState<UserRow[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [isPending, startTransition] = useTransition()
   const [showAdd, setShowAdd] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<UserRow | null>(null)
@@ -49,6 +51,8 @@ export function UserTable({ users, currentUserId }: Props) {
     startTransition(async () => {
       try {
         await createUser(form)
+        const fresh = await getUsers()
+        setUsers(fresh)
         setShowAdd(false)
         setForm({ name: '', email: '', password: '' })
       } catch (err: unknown) {
@@ -61,6 +65,8 @@ export function UserTable({ users, currentUserId }: Props) {
     startTransition(async () => {
       try {
         await deleteUser(u.id)
+        const fresh = await getUsers()
+        setUsers(fresh)
         setConfirmDelete(null)
       } catch {
         // silently ignore — page will stay the same
@@ -72,6 +78,25 @@ export function UserTable({ users, currentUserId }: Props) {
     if (!val) return '-'
     const d = new Date(val as string)
     return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
+  }
+
+  useEffect(() => {
+    let mounted = true
+    getUsers()
+      .then(res => {
+        if (mounted) {
+          setUsers(res)
+          setIsLoading(false)
+        }
+      })
+      .catch(() => {
+        if (mounted) setIsLoading(false)
+      })
+    return () => { mounted = false }
+  }, [])
+
+  if (isLoading) {
+    return <TableSkeleton />
   }
 
   return (

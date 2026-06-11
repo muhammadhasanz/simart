@@ -1,6 +1,3 @@
-import { headers } from 'next/headers'
-import { auth } from '@/lib/auth'
-import { getUsers } from '@/app/actions/users'
 import { UserTable } from '@/components/users/user-table'
 import { UserCog } from 'lucide-react'
 
@@ -8,12 +5,7 @@ export const metadata = {
   title: 'Pengguna - Administrasi RT/RW',
 }
 
-export default async function PenggunaPage() {
-  const [session, users] = await Promise.all([
-    auth.api.getSession({ headers: await headers() }),
-    getUsers(),
-  ])
-
+export default function PenggunaPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-start gap-3">
@@ -28,10 +20,7 @@ export default async function PenggunaPage() {
         </div>
       </div>
 
-      <UserTable
-        users={users}
-        currentUserId={session?.user.id ?? ''}
-      />
+      <UserTable />
     </div>
   )
 }

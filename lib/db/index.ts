@@ -53,8 +53,9 @@ function sqliteBindingExists(): boolean {
   }
 }
 
-export const driver: 'postgres' | 'sqlite' | 'gas' =
-  process.env.DB_DRIVER === 'gas' ? 'gas' :
+export const driver: 'postgres' | 'sqlite' | 'spreadsheet' =
+  process.env.DB_DRIVER === 'spreadsheet' ? 'spreadsheet' :
+  process.env.DB_DRIVER === 'gas' ? 'spreadsheet' : // Backward compatibility for old configs
   process.env.DB_DRIVER === 'sqlite' ? 'sqlite' :
   process.env.DB_DRIVER === 'postgres' ? 'postgres' :
   postgresUrl ? 'postgres' : sqliteBindingExists() ? 'sqlite' : 'postgres'
@@ -161,7 +162,7 @@ if (driver === 'postgres') {
   _db = db
   _sqlite = sqlite
 } else {
-  // 'gas' driver (Hybrid architecture)
+  // 'spreadsheet' driver (Hybrid architecture)
   // We still initialize SQLite because Better Auth needs it for sessions/users
   const { db, sqlite } = buildSqliteDb()
   _db = db
