@@ -163,10 +163,17 @@ if (driver === 'postgres') {
   _sqlite = sqlite
 } else {
   // 'spreadsheet' driver (Hybrid architecture)
-  // We still initialize SQLite because Better Auth needs it for sessions/users
-  const { db, sqlite } = buildSqliteDb()
-  _db = db
-  _sqlite = sqlite
+  // We still initialize a real database because Better Auth needs it for sessions/users.
+  // Prefer Postgres if URL is provided (e.g. on Vercel), otherwise fallback to SQLite.
+  if (postgresUrl) {
+    const { db, pool } = buildPostgresDb()
+    _db = db
+    _pool = pool
+  } else {
+    const { db, sqlite } = buildSqliteDb()
+    _db = db
+    _sqlite = sqlite
+  }
 }
 
 /**

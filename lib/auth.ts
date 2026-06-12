@@ -4,10 +4,7 @@ import { driver, pool, sqliteDb } from '@/lib/db'
 // Build the database option that Better Auth expects:
 //  • Postgres  → pass the raw pg.Pool (Better Auth auto-detects pg dialect)
 //  • SQLite    → pass { type: 'sqlite', db: <better-sqlite3 instance> }
-const authDatabase =
-  driver === 'postgres'
-    ? pool!
-    : sqliteDb!
+const authDatabase = pool ?? sqliteDb!
 
 export const auth = betterAuth({
   database: authDatabase,
